@@ -269,6 +269,9 @@ To build the launcher, put your patched `savagewind.exe` (with a `savagewind.exe
 
 - Logic is open-world, like the game: off the Great Plateau you need the Paraglider and the four runes; each plateau
   shrine needs its own rune.
+- What waits on a Divine Beast in the game waits on it in logic too: the Champions' Ballad on all four, Dagah Keek and
+  Zora's Domain's quests on Vah Ruta, Rito Village's on Vah Medoh, and so on. Zora Armor is needed for the waterfalls
+  (Dagah Keek, Mah Eliya, Diving is Beauty!), and the Master Sword needs at least 10 Heart Containers, as in the game.
 - Three chests nobody can open (Hateno Village's in front of the inn, Rassla Lake's, Aris Beach's in the sea) are never
   checks.
 - This is a fan project, not affiliated with or endorsed by Nintendo. *The Legend of Zelda* is a trademark of Nintendo.

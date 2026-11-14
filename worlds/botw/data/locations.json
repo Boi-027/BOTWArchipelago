@@ -34945,7 +34945,7 @@
 "category": "Side Quest",
 "flag": "100enemy_Finish",
 "hash": 3602154444,
-"dlc": false,
+"dlc": true,
 "pos": null,
 "plateau": false,
 "region": 4
@@ -36005,7 +36005,7 @@
 "category": "Minigame",
 "flag": "MiniGame100enemy_Finish",
 "hash": 1267958485,
-"dlc": false,
+"dlc": true,
 "pos": null,
 "plateau": false,
 "region": -1

@@ -200,7 +200,8 @@ for k, v in msg.items():
                 qname[lab[3:-5]] = txt
 SKIP_QUESTS = {"GanonQuest", "bf2_collabo"}  # the goal itself; an event that can't be started any more
 DLC_QUESTS = {"BalladOfHeroes", "BalladOfHeroGerudo", "BalladOfHeroGoron", "BalladOfHeroZora", "BalladOfHeroRito",
-              "CarryingBlueFireEXMini", "TutorialDungeon"}
+              "CarryingBlueFireEXMini", "TutorialDungeon",
+              "100enemy", "MiniGame100enemy"}  # (the Trial of the Sword's: the Master Trials)
 quests = nin.byml(title["Quest/QuestProduct.sbquestpack"])
 aocq = os.path.join(AOC, "Pack", "AocMainField.pack")
 for q in quests:

@@ -39,7 +39,7 @@ ITEMS = {
     "Climbing Gear Set": (IC.useful, ["Armor_014_Head 1", "Armor_014_Upper 1", "Armor_014_Lower 1"], 1, 0),
     "Rubber Armor Set": (IC.useful, ["Armor_046_Head 1", "Armor_046_Upper 1", "Armor_046_Lower 1"], 1, 0),
     "Barbarian Armor Set": (IC.useful, ["Armor_048_Head 1", "Armor_048_Upper 1", "Armor_048_Lower 1"], 1, 0),
-    "Zora Armor": (IC.useful, ["Armor_006_Upper 1"], 1, 0),
+    "Zora Armor": (IC.progression, ["Armor_006_Upper 1"], 1, 0),  # (waterfalls: Dagah Keek, Mah Eliya...)
     "Snowquill Set": (IC.useful, ["Armor_009_Head 1", "Armor_009_Upper 1", "Armor_009_Lower 1"], 1, 0),
     "Flamebreaker Set": (IC.useful, ["Armor_011_Head 1", "Armor_011_Upper 1", "Armor_011_Lower 1"], 1, 0),
     "Royal Claymore": (IC.useful, ["Weapon_Lsword_024 1"], 1, 0),

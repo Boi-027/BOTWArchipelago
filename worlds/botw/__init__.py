@@ -27,6 +27,26 @@ SHRINE_RUNE = {"Dungeon041": "Progressive Remote Bomb", "Dungeon038": "Magnesis"
                "Dungeon065": "Cryonis"}
 RUNE_FREE = {"MapTower_07", "FirstTower_Finish"}  # (Great Plateau Tower; Follow the Sheikah Slate)
 SHRINE_DUNGEON = {l["name"]: l["dungeon"] for l in LOCATIONS if l["category"] == "Shrine"}
+# freeing a Divine Beast is a game state, not an item: an event on its "Cleared" check, which what comes after needs
+BEAST_FREED = {f"{b} Cleared": f"{b} Freed" for b in ("Vah Ruta", "Vah Medoh", "Vah Rudania", "Vah Naboris")}
+ALL_FREED = list(BEAST_FREED.values())
+# what the game asks for beyond Paraglider + runes (a shrine's chests share its shrine's needs; shops by prefix)
+NEEDS = {
+    "Dagah Keek Shrine": ["Vah Ruta Freed", "Zora Armor"], "The Ceremonial Song": ["Vah Ruta Freed", "Zora Armor"],
+    "Frog Catching": ["Vah Ruta Freed"], "The Giant of Ralis Pond": ["Vah Ruta Freed"],
+    "Diving is Beauty!": ["Zora Armor"], "Mah Eliya Shrine": ["Zora Armor"],
+    "Bareeda Naag Shrine": ["Vah Medoh Freed"], "Voo Lota Shrine": ["Vah Medoh Freed"],
+    "Recital at Warbler's Nest": ["Vah Medoh Freed"], "Shop - Teba": ["Vah Medoh Freed"],
+    "The Jewel Trade": ["Vah Rudania Freed"],
+    "Raqa Zunzo Shrine": ["Vah Naboris Freed"], "The Undefeated Champ": ["Vah Naboris Freed"],
+    "Free the Divine Beasts": ALL_FREED, "Shop - Kilton": ALL_FREED,  # (his stock grows with each beast)
+    "A Gift from the Monks": ALL_FREED + ["Zora Armor"],  # (every shrine: the beasts' and Dagah Keek's too)
+}
+
+
+def needs(l):
+    name = l["name"].split(" Chest")[0] if l["category"] == "Shrine Chest" else l["name"]
+    return next((v for k, v in NEEDS.items() if name == k or name.startswith(k + " ")), [])
 
 
 def launch_client(*args):
@@ -102,10 +122,11 @@ class BotWWorld(World):
                 loc.access_rule = lambda s, n=seeds: s.has("Hestu's Maracas", p) and s.has("Korok Seed", p, n)
             elif l["flag"].startswith("100enemy_"):  # (the Trial of the Sword: from the sword's pedestal, once pulled)
                 hearts = o.master_sword_hearts.value
-                loc.access_rule = lambda s: (s.has_all(CHAMPION_POWERS, p) and s.has("Heart Container", p, hearts)
+                loc.access_rule = lambda s: (s.has_all(CHAMPION_POWERS + ALL_FREED, p)
+                                             and s.has("Heart Container", p, hearts)
                                              and s.has("Progressive Master Sword", p))
-            elif l["dlc"]:
-                loc.access_rule = lambda s: s.has_all(CHAMPION_POWERS, p)
+            elif l["dlc"]:  # (the Champions' Ballad opens once all four beasts are freed; their powers too, to be safe)
+                loc.access_rule = lambda s: s.has_all(CHAMPION_POWERS + ALL_FREED, p)
             elif l["flag"] == "Get_MasterSword_Finish":  # (The Hero's Sword: pulling it)
                 hearts = o.master_sword_hearts.value
                 loc.access_rule = lambda s: s.has("Heart Container", p, hearts)
@@ -114,6 +135,9 @@ class BotWWorld(World):
             elif "Naboris" in l["name"] and l["category"] in ("Divine Beast", "Divine Beast Chest", "Main Quest"):
                 # (Vah Naboris's lightning: the Thunder Helm)
                 loc.access_rule = lambda s: s.has("Thunder Helm", p)
+            if needs(l):
+                rule = loc.access_rule
+                loc.access_rule = lambda s, r=rule, n=needs(l): s.has_all(n, p) and r(s)
             shrine = SHRINE_DUNGEON.get(l["name"].split(" Chest")[0])
             if l["category"] == "Rune Terminal" or l["flag"] in RUNE_FREE:
                 runes = []
@@ -131,6 +155,11 @@ class BotWWorld(World):
                 rule = loc.access_rule
                 loc.access_rule = lambda s, r=rule: s.has_all(MAPS, p) and r(s)
             area.locations.append(loc)
+            if l["name"] in BEAST_FREED:  # (the beast freed: an event where its check is, as hard to reach)
+                ev = BotWLocation(p, BEAST_FREED[l["name"]] + " (event)", None, area)
+                ev.access_rule = loc.access_rule
+                ev.place_locked_item(BotWItem(BEAST_FREED[l["name"]], IC.progression, None, p))
+                area.locations.append(ev)
         goal = BotWLocation(p, "Defeat Calamity Ganon", None, goal_area)
         need, sword = o.required_champion_powers.value, bool(o.goal_needs_master_sword)
         goal.access_rule = lambda s: (s.has("Paraglider", p) and s.has_all(RUNES, p)

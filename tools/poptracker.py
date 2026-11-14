@@ -53,6 +53,7 @@ ITEMS = {
     "Spirit Orb": ("spirit_orb", "consumable", 20, "Obj_DungeonClearSeal"),
     "Korok Seed": ("korok", "consumable", 1341, "Obj_KorokNuts"),
     "Thunder Helm": ("thunder_helm", "toggle", None, "Armor_115_Head"),
+    "Zora Armor": ("zora_armor", "toggle", None, "Armor_006_Upper"),
     "Hestu's Maracas": ("maracas", "toggle", None, "Obj_Maracas"),
     "Travel Medallion": ("travel_medallion", "toggle", None, "Obj_WarpDLC"),
     **{f"{r} Map": (f"map_{i:02d}", "toggle", None, None) for i, r in enumerate(NAMES) if i != PLATEAU},
@@ -65,6 +66,18 @@ CATEGORY_OPTION = {"Korok": "koroks", "Chest": "chests", "Shrine Chest": "shrine
                    "Hestu": "hestu", "Shop": "shop_sanity"}
 SHRINE_RUNE = {"Dungeon041": "remote_bomb", "Dungeon038": "magnesis", "Dungeon009": "stasis", "Dungeon065": "cryonis"}
 RUNE_FREE = {"MapTower_07", "FirstTower_Finish"}
+# a beast freed is its "Cleared" check done (the tracker sees it checked); beyond Paraglider + runes, as the world has it
+BEASTS = ["Vah Ruta", "Vah Medoh", "Vah Rudania", "Vah Naboris"]
+NEEDS = {
+    "Dagah Keek Shrine": (["Vah Ruta"], True), "The Ceremonial Song": (["Vah Ruta"], True),
+    "Frog Catching": (["Vah Ruta"], False), "The Giant of Ralis Pond": (["Vah Ruta"], False),
+    "Diving is Beauty!": ([], True), "Mah Eliya Shrine": ([], True),
+    "Bareeda Naag Shrine": (["Vah Medoh"], False), "Voo Lota Shrine": (["Vah Medoh"], False),
+    "Recital at Warbler's Nest": (["Vah Medoh"], False), "Shop - Teba": (["Vah Medoh"], False),
+    "The Jewel Trade": (["Vah Rudania"], False),
+    "Raqa Zunzo Shrine": (["Vah Naboris"], False), "The Undefeated Champ": (["Vah Naboris"], False),
+    "Free the Divine Beasts": (BEASTS, False), "Shop - Kilton": (BEASTS, False), "A Gift from the Monks": (BEASTS, True),
+}
 
 
 def item_ids():
@@ -199,15 +212,21 @@ def rule(l):
     if "korok_seeds" in l:
         r["seeds"] = l["korok_seeds"]
     elif l["flag"].startswith("100enemy_"):
-        r["trial"] = True
+        r["trial"], r["freed"] = True, BEASTS
     elif l["dlc"]:
-        r["powers"] = True
+        r["powers"], r["freed"] = True, BEASTS
     elif l["flag"] == "Get_MasterSword_Finish":
         r["pull"] = True
     elif l["flag"] == "OldKorok_Help_Finish":
         r["maracas"] = True
     elif "Naboris" in l["name"] and l["category"] in ("Divine Beast", "Divine Beast Chest", "Main Quest"):
         r["helm"] = True
+    name = l["name"].split(" Chest")[0] if l["category"] == "Shrine Chest" else l["name"]
+    beasts, zora = next((v for k, v in NEEDS.items() if name == k or name.startswith(k + " ")), ([], False))
+    if beasts:
+        r["freed"] = sorted(set(r.get("freed", []) + beasts))
+    if zora:
+        r["zora"] = True
     shrine = l.get("dungeon") or SHRINE_DUNGEON.get(l["name"].split(" Chest")[0])
     if l["category"] == "Rune Terminal" or l["flag"] in RUNE_FREE:
         pass
@@ -222,6 +241,7 @@ def rule(l):
 
 LOGIC = r"""-- the logic of worlds/botw (tools/poptracker.py writes this pack)
 MS_HEARTS = 10
+CLEARED = {}  -- the checks done (autotracking): a beast freed is its "Cleared" check
 local function count(code)
   local o = Tracker:FindObjectForCode(code)
   if not o then return 0 end
@@ -262,6 +282,8 @@ function botw(id)
   if r.pull and count("heart") < MS_HEARTS then return false end
   if r.maracas and not has("maracas") then return false end
   if r.helm and not has("thunder_helm") then return false end
+  if r.zora and not has("zora_armor") then return false end
+  if r.freed then for _, id in ipairs(r.freed) do if not CLEARED[id] then return false end end end
   if has("setting_region_lock") then
     if r.reg < 0 then
       for i = 0, 14 do if i ~= PLATEAU and not has(string.format("map_%02d", i)) then return false end end
@@ -290,6 +312,7 @@ local function reset()
 end
 function onClear(slot_data)
   reset()
+  CLEARED = {}
   local opts = slot_data and slot_data["options"] or {}
   for k, v in pairs(opts) do
     local o = Tracker:FindObjectForCode("setting_" .. k)
@@ -306,6 +329,7 @@ function onItem(index, item_id, item_name, player_number)
   elseif o.Type == "consumable" then o.AcquiredCount = o.AcquiredCount + o.Increment end
 end
 function onLocation(location_id, location_name)
+  CLEARED[location_id] = true
   local path = LOCATION_MAPPING[location_id]
   local o = path and Tracker:FindObjectForCode(path)
   if o then o.AvailableChestCount = o.AvailableChestCount - 1 end
@@ -316,10 +340,13 @@ Archipelago:AddLocationHandler("location handler", onLocation)
 """
 
 
-def lua_table(rules):
+def lua_table(rules, beast_ids):
     out = ["RULES = {"]
     for i, r in sorted(rules.items()):
-        parts = [f"reg={r['reg']}"] + [f"{k}=true" for k in ("glider", "runes", "trial", "powers", "pull", "maracas", "helm") if r.get(k)]
+        parts = [f"reg={r['reg']}"] + [f"{k}=true" for k in ("glider", "runes", "trial", "powers", "pull", "maracas", "helm",
+                                                              "zora") if r.get(k)]
+        if r.get("freed"):
+            parts.append("freed={" + ",".join(str(beast_ids[b]) for b in r["freed"]) + "}")
         if "rune" in r:
             parts.append(f'rune="{r["rune"]}"')
         if "seeds" in r:
@@ -453,7 +480,8 @@ def main(ex, out_dir):
 
     # scripts
     adj = "ADJACENT = {" + ", ".join(f"[{i}]={{{','.join(map(str, a))}}}" for i, a in enumerate(reg["adjacent"])) + "}"
-    open(os.path.join(pack, "scripts", "logic.lua"), "w").write(f"PLATEAU = {reg['plateau']}\n{adj}\n{lua_table(rules)}\n{LOGIC}")
+    beast_ids = {b: 7_400_000_000 + l["hash"] for l in locs for b in BEASTS if l["name"] == f"{b} Cleared"}
+    open(os.path.join(pack, "scripts", "logic.lua"), "w").write(f"PLATEAU = {reg['plateau']}\n{adj}\n{lua_table(rules, beast_ids)}\n{LOGIC}")
     with open(os.path.join(pack, "scripts", "mapping.lua"), "w", encoding="utf8") as f:
         f.write("ITEM_MAPPING = {\n" + "".join(f"  [{i}]=\"{c}\",\n" for i, c in mapping.items()) + "}\n")
         f.write("LOCATION_MAPPING = {\n" + "".join(f"  [{i}]={json.dumps(p, ensure_ascii=False)},\n" for i, p in loc_map.items()) + "}\n")
@@ -475,7 +503,7 @@ def main(ex, out_dir):
     main_rows = [["paraglider", "remote_bomb", "magnesis", "stasis", "cryonis"],
                  ["mipha", "daruk", "revali", "urbosa", "sensor"],
                  ["master_sword", "heart", "stamina", "spirit_orb", "korok"],
-                 ["thunder_helm", "maracas", "travel_medallion", "", ""]]
+                 ["thunder_helm", "zora_armor", "maracas", "travel_medallion", ""]]
     option_rows = [[f"setting_{k}" for k in list(OPTIONS)[i:i + 5]] for i in range(0, len(OPTIONS), 5)]
     group = lambda title, rows, size: {"type": "group", "header": title, "content": {
         "type": "itemgrid", "item_margin": "3,3", "item_size": size, "rows": rows}}

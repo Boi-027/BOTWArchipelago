@@ -20,7 +20,7 @@ class GoalNeedsMasterSword(Toggle):
 class MasterSwordHearts(Range):
     """Heart Containers from the multiworld the Master Sword check expects in logic (13 hearts in game = 10 more)."""
     display_name = "Master Sword Hearts"
-    range_start = 0
+    range_start = 10  # (the game's own minimum: fewer and logic would expect the sword before the game allows it)
     range_end = 12
     default = 10
 

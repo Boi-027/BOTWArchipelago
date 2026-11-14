@@ -138,7 +138,7 @@ and "ARCHIPELAGO" under the logo on the title and loading screens.
 
 <img src="docs/images/launcher.jpg" alt="The launcher, set up and ready to play" width="100%">
 
-1. Download **`BotW AP Launcher.exe`** from the [latest release](../../releases/latest).
+1. Download **`BotW.AP.Launcher.exe`** from the [latest release](../../releases/latest).
 2. Start it and choose your **Savage Wind folder** (the one with `savagewind.exe`). Choose your **Archipelago** and
    **PopTracker** folders too, if you want the world and a map tracker installed.
 3. Press **Set up**. The launcher:

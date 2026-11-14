@@ -23,6 +23,7 @@ from collections import defaultdict
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "launcher"))  # (botw_assets)
 import nin  # noqa: E402
 from logo_overlay import deswizzle_px  # noqa: E402
 from regions import NAMES, PLATEAU, Grid  # noqa: E402
@@ -167,43 +168,121 @@ def icon(romfs, overlay, actor):
     for base in (overlay, romfs):
         p = os.path.join(base, "UI", "StockItem", f"{actor}.sbitemico")
         if os.path.exists(p):
-            return picture(open(p, "rb").read()).resize((64, 64), Image.LANCZOS)
+            return picture(open(p, "rb").read())
     return None
 
 
-EMBLEMS = {"mipha": ((70, 150, 235), "M"), "daruk": ((215, 90, 60), "D"), "revali": ((80, 190, 170), "R"),
-           "urbosa": ((235, 190, 70), "U"), "spirit_orb": ((255, 160, 60), ""), "travel_medallion": ((90, 200, 230), "")}
+def hud_textures(romfs):
+    """{name: texture} of the game's layouts (Bootup.pack's and Layout/*): its map and HUD icons"""
+    from botw_assets import bntx_textures  # (launcher/botw_assets.py: BNTX textures)
+    out = {}
 
-
-def emblem(spec):
-    """a glowing disc in the item's colour, its letter on it"""
-    colour, letter = spec
-    k = 4
-    im = Image.new("RGBA", (64 * k, 64 * k), (0, 0, 0, 0))
-    glow = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    ImageDraw.Draw(glow).ellipse((6 * k, 6 * k, 58 * k, 58 * k), fill=colour + (150,))
-    im.alpha_composite(glow.filter(ImageFilter.GaussianBlur(5 * k)))
-    d = ImageDraw.Draw(im)
-    d.ellipse((12 * k, 12 * k, 52 * k, 52 * k), fill=colour + (255,), outline=(255, 250, 225, 255), width=3 * k)
-    if letter:
-        d.text((32 * k, 33 * k), letter, fill=(255, 250, 230, 255), anchor="mm", font=ImageFont.truetype(FONT, 26 * k),
-               stroke_width=k, stroke_fill=(40, 30, 20, 255))
-    else:
-        d.ellipse((24 * k, 24 * k, 40 * k, 40 * k), fill=(255, 245, 210, 255))
-    return im.resize((64, 64), Image.LANCZOS)
-
-
-def map_icon(raster, r, colour):
-    """a region's map: its shape, in its colour, on parchment"""
-    full = raster.point(lambda v: 255 if v == r else 0)
-    mask = full.crop(full.getbbox())
-    k = 52 / max(mask.size)
-    mask = mask.resize((max(1, int(mask.width * k)), max(1, int(mask.height * k))), Image.LANCZOS)
-    out = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    ImageDraw.Draw(out).rounded_rectangle((1, 1, 62, 62), 8, fill=(222, 206, 160, 255), outline=(90, 70, 40, 255), width=2)
-    shape = Image.new("RGBA", mask.size, colour + (255,))
-    out.paste(shape, ((64 - mask.width) // 2, (64 - mask.height) // 2), mask)
+    def scan(data, depth=0):
+        if data[:4] == b"Yaz0":
+            data = nin.yaz0(data)
+        if data[:4] == b"SARC" and depth < 4:
+            for v in nin.sarc(data).values():
+                scan(v, depth + 1)
+        elif data[:4] == b"BNTX":
+            for k, v in bntx_textures(data).items():
+                out.setdefault(k, v)
+    scan(open(os.path.join(romfs, "Pack", "Bootup.pack"), "rb").read())
+    for f in sorted(os.listdir(os.path.join(romfs, "Layout"))):
+        scan(open(os.path.join(romfs, "Layout", f), "rb").read())
     return out
+
+
+def glyph(tex, name, colour):
+    """a layout icon as a shape in `colour`: two-channel ones (^t) keep their glyph in green, the rest in alpha"""
+    from botw_assets import decode
+    fmt, w, h, bh, raw = tex[name]
+    im = decode(raw, fmt, w, h, bh)
+    mask = im.split()[1] if name.endswith("^t") else im.split()[3]
+    out = Image.new("RGBA", im.size, colour + (255,))
+    out.putalpha(mask)
+    return out.crop(mask.getbbox())
+
+
+def slot(pic, glow=None, fill=0.78):
+    """an inventory slot (dark, a thin gold rim) with the picture in it, a soft glow behind it in `glow`"""
+    k = 4
+    out = Image.new("RGBA", (64 * k, 64 * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(out)
+    d.rounded_rectangle((2 * k, 2 * k, 61 * k, 61 * k), 9 * k, fill=(30, 33, 38, 235), outline=(150, 128, 78, 255),
+                        width=2 * k)
+    d.rounded_rectangle((5 * k, 5 * k, 58 * k, 58 * k), 7 * k, outline=(255, 240, 200, 28), width=k)
+    out = out.resize((64, 64), Image.LANCZOS)
+    if glow:
+        g = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        ImageDraw.Draw(g).ellipse((14, 14, 50, 50), fill=glow + (150,))
+        out.alpha_composite(g.filter(ImageFilter.GaussianBlur(7)))
+    k = 64 * fill / max(pic.size)  # (small glyphs up, big icons down)
+    pic = pic.resize((max(1, round(pic.width * k)), max(1, round(pic.height * k))), Image.LANCZOS)
+    out.alpha_composite(pic, ((64 - pic.width) // 2, (64 - pic.height) // 2))
+    return out
+
+
+def layered(tex, layers):
+    """layout glyphs drawn over each other, centred (a marker's core and frame, say)"""
+    parts = [glyph(tex, n, c) for n, c in layers]
+    size = (max(p.width for p in parts), max(p.height for p in parts))
+    out = Image.new("RGBA", size, (0, 0, 0, 0))
+    for p in parts:
+        out.alpha_composite(p, ((size[0] - p.width) // 2, (size[1] - p.height) // 2))
+    return out
+
+
+def badge(pic, small):
+    """a small icon in the corner of a bigger one (a chest on a shrine, say)"""
+    out = pic.copy()
+    small = small.copy()
+    small.thumbnail((26, 26), Image.LANCZOS)
+    shadow = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    shadow.paste((0, 0, 0, 200), (64 - small.width - 4, 64 - small.height - 4), small)
+    out.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(2)))
+    out.alpha_composite(small, (64 - small.width - 6, 64 - small.height - 6))
+    return out
+
+
+# items the game draws from its layouts: (texture, colour, glow, the + version's texture)
+GLYPHS = {"mipha": ("Nt_IconSinJuNewMapL_01^s", (150, 205, 255), (70, 150, 235), "Nt_IconSinJuNewMapDLCL_01^s"),
+          "daruk": ("Nt_IconSinJuNewMapL_00^s", (255, 175, 140), (215, 90, 60), "Nt_IconSinJuNewMapDLCL_00^s"),
+          "revali": ("Nt_IconSinJuNewMapL_02^s", (160, 240, 215), (70, 190, 160), "Nt_IconSinJuNewMapDLCL_02^s"),
+          "urbosa": ("Nt_IconSinJuNewMapL_03^s", (255, 225, 140), (235, 180, 60), "Nt_IconSinJuNewMapDLCL_03^s"),
+          "sensor": ("Nt_SeekSensorIcon_00^s", (150, 235, 255), (60, 190, 230), "Nt_SeekSensorIconP_00^s"),
+          "spirit_orb": ("Nt_MapDungeonNewL_00^t", (255, 220, 160), (255, 140, 40), None),
+          "travel_medallion": ((("DLC_WarpMarkerMapVer_004_1_Frame^t", (255, 220, 120)),
+                                ("DLC_WarpMarkerMapVer_004_1_Core^t", (140, 240, 210))), None, (60, 200, 170), None)}
+GLOWS = {"paraglider": (120, 170, 220), "remote_bomb": (60, 190, 230), "magnesis": (60, 190, 230),
+         "stasis": (60, 190, 230), "cryonis": (60, 190, 230), "master_sword": (90, 150, 255),
+         "heart": (230, 70, 70), "stamina": (90, 220, 90), "korok": (240, 200, 60), "thunder_helm": (250, 220, 90),
+         "zora_armor": (70, 150, 235), "maracas": (230, 90, 70)}
+# the options: what each one adds, as the game draws it (an item's icon, or a layout glyph in a colour)
+OPTION_ART = {"koroks": ("icon", "Obj_KorokNuts"), "chests": ("glyph", "Nt_StampIconTBoxL_00^s", (240, 215, 150)),
+              "shrine_chests": ("glyph", "Nt_MapDungeonNewL_00^t", (130, 220, 255), "chest"),
+              "divine_beast_chests": ("glyph", "Nt_IconSinJuNewMapL_01^s", (130, 220, 255), "chest"),
+              "towers": ("glyph", "Nt_MapTowerNewL_00^t", (255, 200, 120)), "memories": ("icon", "Obj_Camera"),
+              "quests": ("icon", "Obj_ProofBook"), "minigames": ("icon", "Obj_ProofGiantKiller"),
+              "hestu": ("icon", "Obj_Maracas"), "dlc": ("icon", "Obj_Motorcycle"),
+              "master_mode": ("glyph", "Nt_MapDeadIconL_00^t", (255, 120, 90)), "shop_sanity": ("icon", "PutRupee"),
+              "region_lock": ("icon", "KeySmall")}
+
+
+def map_icon(base, raster, r, colour):
+    """a region's map: the game's map of it, cut to its shape, its colour round the edge, in a slot"""
+    full = raster.point(lambda v: 255 if v == r else 0)
+    box = full.getbbox()
+    mask, part = full.crop(box), base.crop(box).convert("RGBA")
+    k = 52 / max(mask.size)
+    size = (max(1, int(mask.width * k)), max(1, int(mask.height * k)))
+    mask, part = mask.resize(size, Image.LANCZOS), part.resize(size, Image.LANCZOS)
+    rim = Image.new("RGBA", size, colour + (255,))
+    rim.putalpha(mask.filter(ImageFilter.MaxFilter(5)))
+    part.putalpha(mask)
+    shape = Image.new("RGBA", size, (0, 0, 0, 0))
+    shape.alpha_composite(rim)
+    shape.alpha_composite(part)
+    return slot(shape, fill=0.86)
 
 
 # ---- the logic, as worlds/botw/__init__.py has it
@@ -401,34 +480,49 @@ def main(ex, out_dir):
     # the items
     ids = item_ids()
     items, mapping = [], {}
+    tex = hud_textures(romfs)
     for name, (code, kind, n, actor) in ITEMS.items():
         if name not in ids:
             continue
         img = f"images/items/{code}.png"
-        pic = icon(romfs, overlay, actor) if actor else map_icon(tiny, int(code[-2:]), REGION_COLOURS[int(code[-2:])])
-        if pic is None:  # (key items the game draws from its layouts: an emblem in the item's colour)
-            pic = emblem(EMBLEMS.get(code, ((150, 150, 150), name[0])))
+        img2 = None  # (the "+" stage's own picture, where the game has one)
+        if code in GLYPHS:
+            t, colour, glow, plus = GLYPHS[code]
+            pic = slot(layered(tex, t) if colour is None else glyph(tex, t, colour), glow)
+            if plus:
+                img2 = f"images/items/{code}_plus.png"
+                slot(glyph(tex, plus, colour), glow).save(os.path.join(pack, img2))
+        elif actor:
+            pic = icon(romfs, overlay, actor)
+            pic = slot(pic, GLOWS.get(code)) if pic else slot(Image.new("RGBA", (8, 8)))
+        else:
+            r = int(code[-2:])
+            pic = map_icon(base, big_r, r, REGION_COLOURS[r])
         pic.save(os.path.join(pack, img))
         if kind == "toggle":
             items.append({"name": name, "type": "toggle", "img": img, "codes": code})
         elif kind == "progressive":
             items.append({"name": name, "type": "progressive", "allow_disabled": True, "codes": code,
-                          "stages": [{"img": img, "codes": f"{code}{i + 1}", "name": f"{name} {i + 1}",
-                                      "img_mods": "" if i == 0 else "overlay|images/plus.png"} for i in range(n)]})
+                          "stages": [{"img": img2 if i and img2 else img, "codes": f"{code}{i + 1}",
+                                      "name": f"{name} {i + 1}",
+                                      "img_mods": "" if i == 0 or img2 else "overlay|images/plus.png"}
+                                     for i in range(n)]})
         else:
             items.append({"name": name, "type": "consumable", "img": img, "codes": code, "max_quantity": n,
                           "min_quantity": 0, "increment": 1})
         mapping[ids[name]] = code
     plus = Image.new("RGBA", (64, 64))
-    ImageDraw.Draw(plus).text((50, 50), "+", fill=(255, 250, 220, 255), anchor="mm", stroke_width=3,
+    ImageDraw.Draw(plus).text((52, 50), "+", fill=(255, 250, 220, 255), anchor="mm", stroke_width=3,
                               stroke_fill=(30, 24, 14, 255), font=ImageFont.truetype(FONT, 30))
     plus.save(os.path.join(pack, "images", "plus.png"))
+    chest = glyph(tex, "Nt_StampIconTBoxL_00^s", (240, 215, 150))
     for k, on in OPTIONS.items():
         img = f"images/items/setting_{k}.png"
-        pic = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-        ImageDraw.Draw(pic).rounded_rectangle((2, 2, 61, 61), 8, fill=(40, 60, 70, 255))
-        ImageDraw.Draw(pic).multiline_text((32, 32), k.replace("_", "\n"), fill=(230, 230, 220, 255), anchor="mm",
-                                           align="center", font=ImageFont.truetype(FONT, 11))
+        art = OPTION_ART[k]
+        pic = icon(romfs, overlay, art[1]) if art[0] == "icon" else glyph(tex, art[1], art[2])
+        pic = slot(pic, fill=0.66)
+        if len(art) > 3:
+            pic = badge(pic, chest)
         pic.save(os.path.join(pack, img))
         items.append({"name": k.replace("_", " ").title(), "type": "toggle", "img": img, "codes": f"setting_{k}",
                       "initial_active_state": bool(on)})
@@ -506,16 +600,16 @@ def main(ex, out_dir):
                  ["thunder_helm", "zora_armor", "maracas", "travel_medallion", ""]]
     option_rows = [[f"setting_{k}" for k in list(OPTIONS)[i:i + 5]] for i in range(0, len(OPTIONS), 5)]
     group = lambda title, rows, size: {"type": "group", "header": title, "content": {
-        "type": "itemgrid", "item_margin": "3,3", "item_size": size, "rows": rows}}
+        "type": "itemgrid", "item_margin": "4,4", "item_size": size, "rows": rows}}
     left = {"type": "array", "orientation": "vertical", "content": [
-        group("Items", main_rows, 44), group("Regions", map_rows, 44), group("Options", option_rows, 34)]}
+        group("Items", main_rows, 50), group("Regions", map_rows, 50), group("Options", option_rows, 40)]}
     layout = {
-        "tracker_default": {"type": "container", "background": "#1c1a16", "content": {"type": "dock", "content": [
+        "tracker_default": {"type": "container", "background": "#14171b", "content": {"type": "dock", "content": [
             {"type": "dock", "dock": "left", "v_alignment": "stretch", "content": left},
             {"type": "tabbed", "tabs": [{"title": "Hyrule", "content": {"type": "map", "maps": ["Hyrule"]}},
                                         {"title": "Regions", "content": {"type": "map", "maps": ["Regions"]}}]}]}},
         "tracker_broadcast": {"type": "array", "orientation": "vertical", "content": [
-            group("Items", main_rows, 44), group("Regions", map_rows, 44)]},
+            group("Items", main_rows, 50), group("Regions", map_rows, 50)]},
     }
     json.dump(layout, open(os.path.join(pack, "layouts", "tracker.json"), "w"), indent=1)
     json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild",

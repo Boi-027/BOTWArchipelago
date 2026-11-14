@@ -17,14 +17,16 @@
 
 Shrines, Korok Seeds, chests, towers, memories, quests, Divine Beasts and shops all become checks, and nothing you
 find is the game's own reward. What other players send you arrives **at once, with the game's own item-get scene**,
-wherever Link is. The whole Archipelago client is built into the game: no extra window, no launcher.
+wherever Link is. The whole Archipelago client is built into the game: no extra client window, and a launcher
+sets everything up for you.
 
 ---
 
 ## Contents
 - [Features](#features)
 - [What you need](#what-you-need)
-- [Install](#install)
+- [Install with the launcher](#install-with-the-launcher)
+- [Install by hand](#install-by-hand)
 - [Play](#play)
 - [Options](#options)
 - [PopTracker](#poptracker)
@@ -122,9 +124,9 @@ and "ARCHIPELAGO" under the logo on the title and loading screens.
 | | |
 |---|---|
 | **Game** | Your own dump of *Breath of the Wild* **1.9.0** for Switch (the Champions' Ballad is optional) |
-| **Savage Wind Recomp** | **0.5.3-alpha.5**, built with [`savagewind-archipelago.patch`](savagewind-archipelago.patch) |
+| **Savage Wind Recomp** | **0.5.3-alpha.5**, the normal release, with your game files set up in it |
 | **Archipelago** | **0.6.8** or later, to generate seeds and host |
-| **Python** | 3.12 with `oead`, `evfl` and `Pillow`, to build the overlay from your own game files |
+| **Python** | Only to install by hand: 3.12 with `oead`, `evfl` and `Pillow` |
 
 > [!IMPORTANT]
 > This repository contains **no Nintendo files**. The overlay (changed game files) and the PopTracker pack are built
@@ -132,7 +134,26 @@ and "ARCHIPELAGO" under the logo on the title and loading screens.
 
 ---
 
-## Install
+## Install with the launcher
+
+<img src="docs/images/launcher.jpg" alt="The launcher, set up and ready to play" width="100%">
+
+1. Download **`BotW AP Launcher.exe`** from the [latest release](../../releases/latest).
+2. Start it and choose your **Savage Wind folder** (the one with `savagewind.exe`). Choose your **Archipelago** and
+   **PopTracker** folders too, if you want the world and a map tracker installed.
+3. Press **Set up**. The launcher:
+   - puts the Archipelago build of Savage Wind in place (your original stays as `savagewind.stock.exe`),
+   - builds the overlay from your own game files (a few minutes),
+   - turns it on in `launch-flags.txt`,
+   - installs `botw.apworld` into Archipelago and, if you chose PopTracker, a tracker pack made from your game files.
+4. Fill in the server, slot name and password, pick your links and press **Play**.
+
+**Restore original** puts your own `savagewind.exe` back and turns the overlay off. The launcher contains no game
+files: its look (BotW's font, hearts, map and logo) is read from your own dump when it opens.
+
+---
+
+## Install by hand
 
 1. **Savage Wind with the patch.** In a [Savage Wind](https://github.com/Revivedx/SavageWindRecomp) checkout at 0.5.3-alpha.5 (commit `740b180`):
    ```sh
@@ -226,11 +247,20 @@ Put `poptracker/BotW_AP.zip` in PopTracker's `packs` folder and connect with the
 | [`worlds/botw/`](worlds/botw) | The Archipelago world: items, options, logic, location data |
 | [`tools/`](tools) | Builds the location data and the overlay from your own game files, and the PopTracker pack |
 | [`savagewind-archipelago.patch`](savagewind-archipelago.patch) | Savage Wind changes: the built-in client, item scenes, shops, region lock |
+| [`launcher/`](launcher) | The launcher: setup logic, its window, and the PyInstaller build |
 | [`build.py`](build.py) | Zips `worlds/botw` into `botw.apworld` |
 
 ```sh
 .venv/Scripts/python -I tools/extract.py "<your Savage Wind folder>/extracted"   # location data
 python build.py                                                                  # botw.apworld
+```
+
+To build the launcher, put your patched `savagewind.exe` (with a `savagewind.exe.sha256` holding its SHA-256) and
+`botw.apworld` in `launcher/payload`, then:
+
+```sh
+.venv/Scripts/python -m pip install pyinstaller
+.venv/Scripts/python launcher/build_launcher.py                                 # dist/BotW AP Launcher.exe
 ```
 
 ---

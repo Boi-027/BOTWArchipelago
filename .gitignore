@@ -5,3 +5,9 @@ __pycache__/
 ap_overlay/
 poptracker/
 extracted/
+# the launcher's build: its payload's big files come from a Savage Wind build and build.py
+launcher/payload/savagewind.exe
+launcher/payload/savagewind.exe.sha256
+launcher/payload/botw.apworld
+dist/
+build/

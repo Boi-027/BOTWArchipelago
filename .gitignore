@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+# built from your own game files: never publish
+ap_overlay/
+poptracker/
+extracted/

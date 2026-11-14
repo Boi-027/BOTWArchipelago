@@ -1,0 +1,66 @@
+"""Saved flags Archipelago keeps in the game's own save, added to the game data (gamedata and the save format) -
+RomFS overlay files made from your own game files:
+  - shop sanity: every shop slot in Hyrule is a check (tools/shops.py has the slots). The shops still sell what they
+    sold; Savage Wind sets a slot's AP_Shop_ flag the first time Link buys it (runtime/ap_event.c)
+  - region lock: AP_RegionLock (the slot has it on: the client sets it) and AP_Region_<n>, a region's map received
+    (n: tools/regions.py; the Great Plateau's is never locked)
+
+Needs oead (botw_ap/.venv). Reads the overlay folder's copies first (other tools wrote them):
+    botw_ap/.venv/Scripts/python -I tools/shop_sanity.py "<Savage Wind>/extracted" <overlay folder>
+"""
+import os
+import sys
+import zlib
+
+import oead
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ap_item import put  # noqa: E402
+from give_trigger import rstb_update, s32, to_byml  # noqa: E402
+from shops import shop_slots  # noqa: E402
+
+
+def main(ex, out):
+    romfs = os.path.join(ex, "romfs")
+
+    def src(rel):
+        p = os.path.join(out, rel)
+        return open(p if os.path.exists(p) else os.path.join(romfs, rel), "rb").read()
+
+    slots = shop_slots(ex)
+    boot = oead.Sarc(src("Pack/Bootup.pack"))
+    bw = oead.SarcWriter.from_sarc(boot)
+    gd = oead.Sarc(oead.yaz0.decompress(bytes(boot.get_file("GameData/gamedata.ssarc").data)))
+    gw = oead.SarcWriter.from_sarc(gd)
+    name = next(f.name for f in gd.get_files() if f.name.startswith("/bool_data"))  # (not one the Blood Moon resets)
+    b = oead.byml.from_binary(bytes(gd.get_file(name).data))
+    have = {str(e["DataName"]) for e in b["bool_data"]}
+    flags = [f for f in [s["flag"] for s in slots] + ["AP_RegionLock"] + [f"AP_Region_{i:02d}" for i in range(15)]
+             if f not in have]
+    for fl in flags:
+        b["bool_data"].append(to_byml({
+            "DataName": fl, "DeleteRev": s32(0xFFFFFFFF), "HashValue": s32(zlib.crc32(fl.encode())),
+            "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
+            "IsProgramWritable": True, "IsSave": True, "MaxValue": True, "MinValue": False, "ResetType": s32(0)}))
+    gw.files[name] = oead.byml.to_binary(b, big_endian=False, version=2)
+    gdata = gw.write()[1]
+    bw.files["GameData/gamedata.ssarc"] = oead.yaz0.compress(gdata)
+    sv = oead.Sarc(oead.yaz0.decompress(bytes(boot.get_file("GameData/savedataformat.ssarc").data)))
+    sw = oead.SarcWriter.from_sarc(sv)
+    last = "/saveformat_5.bgsvdata"  # (game_data.sav's last part: 2712 of its 8192)
+    f = oead.byml.from_binary(bytes(sv.get_file(last).data))
+    assert str(f["file_list"][0]["file_name"]) == "game_data.sav" and len(f["file_list"][1]) + len(flags) <= 8192
+    for fl in flags:
+        f["file_list"][1].append(to_byml({"DataName": fl, "HashValue": s32(zlib.crc32(fl.encode()))}))
+    sw.files[last] = oead.byml.to_binary(f, big_endian=False, version=2)
+    sdata = sw.write()[1]
+    bw.files["GameData/savedataformat.ssarc"] = oead.yaz0.compress(sdata)
+    put(out, "Pack/Bootup.pack", bw.write()[1])
+    rel = "System/Resource/ResourceSizeTable.product.srsizetable"
+    put(out, rel, rstb_update(src(rel), {"GameData/gamedata.sarc": len(gdata) + 0x1000,
+                                         "GameData/savedataformat.sarc": len(sdata) + 0x1000}))
+    print(f"saved flags: {len(slots)} shop slots, region lock; {len(flags)} flags")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1], sys.argv[2])

@@ -62,15 +62,25 @@ It is your game's files: never share it.
 - **Master Mode** (option, off): you play Master Mode, so its 117 chests that exist only there are checks. Three chests
   nobody can open are never checks (Hateno Village's in front of the inn, Rassla Lake's, Aris Beach's in the sea).
 - **Shop Sanity** (option, off): every shop slot is a check (about 500: town stores, armor shops, traveling
-  merchants, Beedle at every stable, Kilton, the tech labs, Granté) - the first time you buy each thing a shopkeeper
-  sells. You still get what you bought.
+  merchants, Beedle at every stable, Kilton, the tech labs, Granté). Each one is sold as its own Archipelago Item, at
+  the price of the good it stands in for: one ware on each pile of a store's counter, and the goods on a merchant's
+  list. Buying it sends the check; then the shop sells its own good there again (on a counter at once, on a
+  merchant's list the next time you meet them; buying one again before that gets you the good). Armor on a
+  mannequin stays armor: the first one you buy is the check.
 - **Region Lock** (option, off): Hyrule opens region by region (the 15 Sheikah Tower regions) from the Great Plateau.
   Each region's map is an item (14 Maps; you start with one region next to the plateau); a region is reached from a
   neighbour once its map is in. A locked region is hidden in thick fog, and stepping into it whites the screen out and
   puts Link back where he last stood clear of it.
 - **DeathLink**: your deaths go to everyone in DeathLink; theirs kill Link (at once once he has taken a hit since the
   last load, otherwise at his next hit).
-- **TrapLink**: traps you receive go to everyone in TrapLink; theirs become one of ours (Thunderstorm or Midnight).
+- **TrapLink**: traps you receive go to everyone in TrapLink; theirs become one of ours.
+- **Banners**: every item without an item-get scene (filler, traps, gear, maps, pouch slots) is announced by the game's
+  own centred message, as in Waikuteru's randomizer ("You got Arrows x10!", "Warping is now disabled"...).
+- **Adventure Log**: once connected, *Archipelago Hints* (Side Quests) lists the hints about your items and world,
+  newest first, and *Archipelago Goal* (Main Quests) shows your goal and how far along you are.
+- **Traps** that change the world: Heat, Cold (1 min), Fire (8 s), Fog, Darkness (2 min) on the overworld (not inside
+  shrines or Divine Beasts); Bokoblin, Moblin and Lynel Traps spawn enemies around you in the field (not on the Great
+  Plateau before the Paraglider); a Thief Trap takes a weapon, bow or shield you aren't holding.
 - **RingLink**: rupees you gain or spend are shared; loading a save isn't counted as spending.
 - The room's progress for this slot is kept in `ap/` next to `savagewind.exe`.
 

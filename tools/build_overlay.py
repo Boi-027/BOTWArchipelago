@@ -2,7 +2,8 @@
 under the logo on the title and loading screens (logo_overlay.py, needs Pillow), the Archipelago
 Item, a saved flag for every shop slot (shop_sanity.py), the runes' item-get pictures and words (rune_items.py), every check's normal reward replaced by the Archipelago
 Item (quest rewards and the runes: quest_rewards.py), and the trigger that hands received items to Link with the game's
-item-get scene (give_trigger.py: needs oead and evfl, from botw_ap/.venv). Savage Wind loads it with the launch option
+item-get scene (give_trigger.py: needs oead and evfl, from botw_ap/.venv), and the quest log's Archipelago Hints and Goal
+(quest_log.py). Savage Wind loads it with the launch option
 SAVAGEWIND_ROMFS_OVERLAY=<Savage Wind folder>/ap_overlay. It holds changed game files: for your machine only.
 
     python -I tools/build_overlay.py "<Savage Wind folder>" [<Archipelago folder>]
@@ -24,7 +25,7 @@ for script, args in (("title_overlay.py", [os.path.join(ex, "romfs"), out, "0.1.
     subprocess.run([sys.executable, "-I", os.path.join(here, script)] + args, check=True)
 venv = os.path.join(here, "..", ".venv", "Scripts", "python.exe")
 for script, args in (("shop_sanity.py", [ex, out]), ("rune_items.py", [os.path.join(ex, "romfs"), out]),
-                     ("quest_rewards.py", [ex, out]), ("give_trigger.py", [ex, out]),
+                     ("quest_rewards.py", [ex, out]), ("give_trigger.py", [ex, out]), ("quest_log.py", [ex, out]),
                      ("logo_overlay.py", [os.path.join(ex, "romfs"), out])):  # (last: it adds to Bootup.pack too)
     subprocess.run([venv if os.path.exists(venv) else sys.executable, "-I", os.path.join(here, script)] + args,
                    check=True)

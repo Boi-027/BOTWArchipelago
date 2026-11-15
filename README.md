@@ -56,6 +56,22 @@ instead of its normal reward, and it leaves the pouch on its own right after.
 <tr>
 <td valign="top">
 
+### The multiworld in your Adventure Log
+Two quests of the game's own appear once you connect, at **Multiworld: _your slot_**.
+**Archipelago Hints** (Side Quests) lists every hint about your items and your world, newest first, the moment
+it's found or bought. **Archipelago Goal** (Main Quests) shows what your goal needs and how far along you are:
+champion powers ticked off as they arrive, the Master Sword if it's needed, and your checks.
+
+</td>
+<td valign="top">
+
+<img src="docs/images/quest-log.jpg" alt="The Archipelago Hints and Archipelago Goal quests">
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
 ### Progressive runes and champions
 Remote Bomb, Stasis and the Sheikah Sensor come in two steps (the second is the **+**), Magnesis and Cryonis in
 one. The four champion abilities are progressive too, with the Champions' Ballad **+**. The Great Plateau's rune
@@ -100,6 +116,36 @@ like the Lost Woods.
 <tr>
 <td valign="top">
 
+### Traps that change Hyrule
+Filler and traps are announced by the game's own banner. A **Fog** or **Darkness Trap** changes all of Hyrule's
+light for two minutes; **Heat** and **Cold** make the air scorching or freezing for one (dress for it); a
+**Fire Trap** sets the air itself alight. Then there's weather (Thunderstorm, Blizzard, Downpour, Midnight), the
+game's own bans (No Warping, No Saving, Hunger), Ouch, Rupee Drain and Warp.
+
+</td>
+<td valign="top">
+
+<img src="docs/images/traps-world.jpg" alt="Fire, fog, darkness and cold traps">
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### Enemies and thieves
+**Bokoblin**, **Moblin** and **Lynel Traps** make them spawn around you in the field, armed, for a while. A
+**Thief Trap** goes through your pouch and takes a weapon, bow or shield you aren't holding.
+
+</td>
+<td valign="top">
+
+<img src="docs/images/traps-enemies.jpg" alt="Bokoblins spawned by a trap, and a thief">
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
 ### Everything that was vanilla is in the pool
 The Paraglider (you leave the plateau when it arrives), the Thunder Helm, Hestu's Maracas, the
 **Progressive Master Sword** (4 with the DLC: the sword, then each Trial of the Sword's power), Hestu's Weapon / Bow /
@@ -114,8 +160,8 @@ Shield Slots, the minigame prizes, horse gear and more.
 </tr>
 </table>
 
-**Also:** DeathLink, TrapLink (Thunderstorm and Midnight traps), RingLink, in-game notifications at the bottom left,
-and "ARCHIPELAGO" under the logo on the title and loading screens.
+**Also:** DeathLink, TrapLink, RingLink, in-game notifications at the bottom left, and "ARCHIPELAGO" under the logo
+on the title and loading screens.
 
 ---
 

@@ -96,7 +96,13 @@ class MasterMode(Toggle):
 
 
 class TrapPercentage(Range):
-    """Share of the filler that is traps (Thunderstorm: forces a thunderstorm for 2 minutes, Midnight: jumps to night)."""
+    """Share of the filler that is traps, each announced by the game's own banner: Thunderstorm, Blizzard, Downpour (that
+    weather for 2 minutes), Midnight (jumps to night), No Warping, No Saving, Hunger (the game's own prohibitions, 90
+    seconds), Ouch (half your hearts, never the last quarter), Rupee Drain (50 rupees), Warp (to a random stable),
+    Heat, Cold (1 minute: they hurt), Fire (you catch fire, as on Death Mountain: 8 seconds), Fog, Darkness (2
+    minutes), Bokoblin (2 minutes), Moblin (90 seconds), Lynel (1 minute: they join the overworld's wildlife wherever
+    you go), Thief (a weapon, bow or shield you aren't holding). The environment and enemy traps work on the overworld
+    only."""
     display_name = "Trap Percentage"
     range_start = 0
     range_end = 50

@@ -21,7 +21,7 @@ import oead
 from evfl import Container, EntryPoint, Event
 from evfl.actor import Actor
 from evfl.common import ActorIdentifier, StringHolder
-from evfl.event import ActionEvent, SubFlowEvent, SwitchEvent
+from evfl.event import ActionEvent, ForkEvent, JoinEvent, SubFlowEvent, SwitchEvent
 from evfl.util import make_index, make_rindex
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,10 +38,88 @@ ITEMS = ["Obj_HeroSoul_Zora", "Obj_HeroSoul_Rito", "Obj_HeroSoul_Goron", "Obj_He
          "Obj_DLC_HeroSoul_Zora", "Obj_DLC_HeroSoul_Rito", "Obj_DLC_HeroSoul_Goron", "Obj_DLC_HeroSoul_Gerudo",
          "Obj_RemoteBomb", "Obj_RemoteBombLv2", "Obj_StopTimer", "Obj_StopTimerLv2", "Obj_SheikSensor",
          "Obj_SheikSensorLv2", "Obj_Magnetglove", "Obj_IceMaker"]
+DEMOS = len(ITEMS)  # (worlds/botw/items.py: "!msg <n>" counts on from here)
+assert DEMOS == 32, "worlds/botw/items.py's DEMOS"
+
+
+def banners():
+    """[(item name, banner text, event actions before it)] in worlds/botw/items.py's BANNERS order: AP_Q<DEMOS + 1>...
+    The game's own centred message (Demo_OpenDungeonMessage), as the Champions' Ballad's and Waikuteru's randomizer's"""
+    import ast
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "worlds", "botw", "items.py"),
+               encoding="utf8").read()
+    names = next(ast.literal_eval(n.value) for n in ast.parse(src).body
+                 if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "BANNERS")
+    out = []
+    for n in names:
+        text, acts = BANNER_TEXT.get(n, (f"You got {n}!", []))
+        if isinstance(acts, str):  # (a flag: the event turns it on, the client off again later)
+            acts = [("Demo_FlagON", {"IsWaitFinish": True, "FlagName": acts})]
+        out.append((n, text, acts))
+    return out
+
+
+# a trap's or effect's words (and what the event does first); every other item: "You got <name>!"
+BANNER_TEXT = {
+    "Thunderstorm Trap": ("A thunderstorm is rolling in!", []), "Midnight Trap": ("Night has fallen...", []),
+    "Blizzard Trap": ("A blizzard is sweeping in!", []), "Downpour Trap": ("The skies have opened up!", []),
+    "No Warping Trap": ("Warping is now disabled", []), "No Saving Trap": ("Saving is now disabled", []),
+    "Hunger Trap": ("Eating is now disabled", []), "Ouch Trap": ("Ouch! Half your hearts are gone", []),
+    "Rupee Drain Trap": ("50 rupees went missing...", []), "Warp Trap": ("You're being whisked away!", []),
+    "Full Recovery": ("Your hearts are fully restored", [("Demo_RecoverPlayerLife", {"IsWaitFinish": True})]),
+    "Heat Trap": ("A heat wave is scorching Hyrule!", []),
+    "Cold Trap": ("A cold snap is freezing Hyrule!", []),
+    "Fire Trap": ("The air is hot enough to burn!", []),
+    "Fog Trap": ("A thick fog is rolling in...", []),
+    "Darkness Trap": ("Darkness is falling over Hyrule...", []),
+    "Bokoblin Trap": ("Bokoblins are on the prowl!", []),
+    "Moblin Trap": ("Moblins are on the prowl!", []),
+    "Lynel Trap": ("Lynels are on the hunt!", []),
+    "Thief Trap": ("A thief went through your pouch!", []),
+}
+
+# The environment traps: the game's own ChangeWeatherTag (what the overworld's mountains, the desert's storm and the
+# Divine Beasts set their weather and temperature with), wired as the map wires its own: an Area around Link and a link
+# tag that reads the trap's flag both signal an AND link tag, and that signals the weather tag. A link tag only sees a
+# flag an event changed, so the client never sets these itself: it sets AP_Want_<flag> and has the event's sync entry
+# (SYNC below) copy every want onto its flag (runtime/ui/ap_client.mm). The overworld's static map units are loaded
+# whole, so one set in one of them works everywhere (the Area covers the map); link tags do nothing in the dynamic
+# units, and the static pack can't grow much (a set in every tile crashed the game). 99999.9: the temperature isn't
+# changed, -1: nor that setting.
+KEEP = 99999.9
+ENV_TRAPS = True
+ENV_TILE = "I-8"  # (as Waikuteru's randomizer's: an out-of-the-way corner)
+SPAWN_TRAPS = True
+ENV = {  # flag: (PaletteSel, Weather, WeatherEff, IgnitedLevel, temperature)
+    "AP_Env_Heat": (-1, 0, 2, 0, 50.0),   # (the desert's day is about 40)
+    "AP_Env_Cold": (-1, 4, 2, 0, -15.0),  # (snow; Hebra's peaks are about -20)
+    "AP_Env_Fire": (-1, -1, -1, 1, KEEP),  # (as on Death Mountain's summit: Link and the grass catch fire)
+    "AP_Env_Fog": (8, -1, -1, 0, KEEP),   # (the desert storm's palette: a thick yellow haze)
+    "AP_Env_Dark": (45, -1, 0, 0, KEEP),  # (a dark blue, starry gloom; the Lost Woods' 7 turns the screen black)
+}
+
+# The enemy traps: these join every area's wildlife the overworld's spawns pick from (Ecosystem/AreaData's Animal
+# lists), and the game's own spawn event for them (AutoPlacement_Animal) makes them only while the flag is on (none
+# on the Great Plateau before the paraglider: the game holds its spawns back there).
+# None of them is in a vanilla spawn event (the Lizalfos and Keese are: they'd spawn always). Their weapons: what the
+# map gives that enemy most.
+SPAWNS = {"AP_Spawn_Bokoblin": (["Enemy_Bokoblin_Junior", "Enemy_Bokoblin_Middle", "Enemy_Bokoblin_Senior"], 2),
+          "AP_Spawn_Moblin": (["Enemy_Moriblin_Junior", "Enemy_Moriblin_Middle"], 1),
+          "AP_Spawn_Lynel": (["Enemy_Lynel_Junior"], 1)}  # (the enemies, how many at most in a group)
+MSG_FILE = "Archipelago"  # (EventFlowMsg/Archipelago.msbt: the banners' words, labels Banner<k>)
+
 # flags no event reads (where the game's own rune gifts used to go) and none sets (offers that tested a "+" rune)
 VOID, NEVER = "AP_Void", "AP_Never"
 PENDING, DONE = "AP_Pending", "AP_Done"
-QFLAGS = [f"AP_Q{i + 1}" for i in range(len(ITEMS))]
+QFLAGS = [f"AP_Q{i + 1}" for i in range(DEMOS + 96)]  # (the banners: up to 95)
+SYNC = len(QFLAGS)  # (AP_Q128: every AP_Want_<flag> onto its flag, the environment and enemy traps'; no banner)
+# the quest log's Archipelago quests (tools/quest_log.py): shown once their first step's flag is on; saved, and set
+# through the sync entry too (the quest log, as the map's link tags, may only see a flag an event changed). They are
+# quests the game declares flags for but never shipped (their <quest>_Ready already on: a quest only shows with it;
+# TurnTestQuest as EIdras' BOTW-Archipelago uses it): Hints, Goal. The log shows quest_log.py's titles.
+QUESTS = ["PrezentationOkamura", "TurnTestQuest"]
+QUEST_FLAGS = [f"{q}_Activated" for q in QUESTS]
+WANTS = list(ENV) + list(SPAWNS) + QUEST_FLAGS
 FLOW = "Archipelago"
 
 
@@ -142,6 +220,27 @@ def dispatch_flow():
                               "PorchItemName": actor.replace("DLC_", "")}, off)
         give = fl.subflow("GetDemo", "GetItemByName", {"CheckTargetActorName": actor, "IsInvalidOpenPouch": False}, after)
         nxt_check = fl.switch(esa, "CheckFlag", {"FlagName": QFLAGS[i]}, {1: give, 0: nxt_check})
+    for k, (name, text, acts) in reversed(list(enumerate(banners()))):
+        i = DEMOS + k
+        off = fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": QFLAGS[i]}, done)
+        first = fl.action(esa, "Demo_OpenDungeonMessage", {"IsWaitFinish": True,
+                                                           "MessageId": f"EventFlowMsg/{MSG_FILE}:Banner{k}"}, off)
+        for a, params in reversed(acts):  # ("Actor.Action": another actor's; else the event system's)
+            actor, _, a = a.rpartition(".")
+            first = fl.action(actor or esa, a, params, first)
+        nxt_check = fl.switch(esa, "CheckFlag", {"FlagName": QFLAGS[i]}, {1: first, 0: nxt_check})
+    off = fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": QFLAGS[SYNC - 1]}, done)
+    for flag in reversed(WANTS):  # (each flag as its want: changed by the event, so the map's link tags see it)
+        on_ = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": flag}, off)
+        if flag in QUEST_FLAGS:  # (a quest starts as the game's own do: its first step, then its flag - once:
+            # advancing again would finish it)
+            on_ = fl.action(esa, "Demo_AdvanceQuest", {"IsWaitFinish": True, "QuestName": flag[:-len("_Activated")],
+                                                       "StepName": "", "ForceRunTelop": False}, on_)
+            on_ = fl.switch(esa, "CheckFlag", {"FlagName": flag}, {1: off, 0: on_})
+        off_ = (off if flag in QUEST_FLAGS else  # (a quest once shown stays: its want resets with every load)
+                fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": flag}, off))
+        off = fl.switch(esa, "CheckFlag", {"FlagName": f"AP_Want_{flag}"}, {1: on_, 0: off_})
+    nxt_check = fl.switch(esa, "CheckFlag", {"FlagName": QFLAGS[SYNC - 1]}, {1: off, 0: nxt_check})
     fl.entry("AP_Dispatch", nxt_check)
     return f
 
@@ -206,6 +305,131 @@ def pack_statics(aoc, out):
     print(f"{n} static units packed into {rel}")
 
 
+def env_tags(ex, out, sizes):
+    """ENV's weather tags, wired to their flags and to an Area over the whole map, into ENV_TILE's static unit (the
+    overlay's copy if a tool wrote one), at its middle"""
+    import byml
+    from shops import field_units
+    units = [(tile, rel, raw) for tile, kind, rel, raw in field_units(ex) if rel]
+    used = {o["HashId"] for _, _, raw in units for o in nin.byml(raw).get("Objs", [])}
+
+    def new_hash(seed):
+        h = zlib.crc32(seed.encode())
+        while h in used or h == 0:
+            h = (h + 1) & 0xFFFFFFFF
+        used.add(h)
+        return byml.U32(h)
+
+    def sig(dest):  # (as the map's own: a signal, no demo member)
+        return {"!Parameters": {"NoAutoDemoMember": False}, "DefinitionName": "BasicSig", "DestUnitHashId": dest}
+
+    def link_tag(h, dest, pos, flag=None):
+        p = {"IncrementSave": False, "MakeSaveFlag": byml.S32(0), "NoChangeSignal": False,
+             "SaveFlagOnOffType": byml.S32(0)}
+        if flag:
+            p["SaveFlag"] = flag
+        return {"!Parameters": p, "HashId": h, "LinksToObj": [sig(dest)], "SRTHash": byml.S32(0), "Translate": pos,
+                "UnitConfigName": "LinkTagAnd"}
+
+    for tile, rel, raw in units:
+        if not rel.endswith(f"/{ENV_TILE}/{ENV_TILE}_Static.smubin"):
+            continue
+        p = os.path.join(out, rel)
+        raw = open(p, "rb").read() if os.path.exists(p) else raw
+        d = nin.yaz0(raw)
+        m = byml.read(d)
+        objs = m.setdefault("Objs", [])
+        ys = sorted(float(o["Translate"][1]) for o in objs if "Translate" in o) or [200.0]
+        x, y, z = -4500.0 + 1000 * (ord(tile[0]) - ord("A")), ys[len(ys) // 2], -3500.0 + 1000 * (int(tile[2:]) - 1)
+        area = {"!Parameters": {"AutoSave": False, "CameraPriority": byml.S32(1), "CameraSet": "-",
+                                "ForceCalcInEvent": False, "Shape": "Sphere"},
+                "HashId": new_hash(f"{tile}/area"), "LinksToObj": [], "SRTHash": byml.S32(0),
+                "Scale": byml.F32(12000.0),  # (from any tile's middle to the farthest corner of the map)
+                "Translate": [byml.F32(x), byml.F32(y), byml.F32(z)], "UnitConfigName": "Area"}
+        objs.append(area)
+        for k, (flag, (pal, weather, eff, ignite, temp)) in enumerate(ENV.items()):
+            pos = lambda dy: [byml.F32(x + 2 * k), byml.F32(y + dy), byml.F32(z)]
+            tag, both = new_hash(f"{tile}/{flag}/weather"), new_hash(f"{tile}/{flag}/and")
+            objs.append({"!Parameters": {"BluffThunderOff": False, "CloudShadowOff": False,
+                                         "FogMinusCorrection": False, "IgnitedLevel": byml.S32(ignite),
+                                         "PSelSpeed": byml.S32(0), "PaletteSel": byml.S32(pal),
+                                         "TemperatureDay": byml.F32(temp), "TemperatureDirectDay": byml.F32(temp),
+                                         "TemperatureDirectNight": byml.F32(temp), "TemperatureNight": byml.F32(temp),
+                                         "Weather": byml.S32(weather), "WeatherEff": byml.S32(eff)},
+                         "HashId": tag, "SRTHash": byml.S32(0), "Translate": pos(4), "UnitConfigName": "ChangeWeatherTag"})
+            objs.append(link_tag(both, tag, pos(2)))
+            objs.append(link_tag(new_hash(f"{tile}/{flag}/flag"), both, pos(0), flag))
+            area["LinksToObj"].append(sig(both))
+        objs.sort(key=lambda o: o["HashId"] & 0xFFFFFFFF)
+        new = byml.write(m, struct.unpack_from("<H", d, 2)[0])
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as fh:
+            fh.write(nin.yaz0_store(new, struct.unpack_from(">I", raw, 8)[0]) if raw[:4] == b"Yaz0" else new)
+        name = ("Aoc/0010/" + rel[len("aoc/0010/"):]) if rel.startswith("aoc/0010/") else rel
+        sizes[name.replace(".smubin", ".mubin")] = len(new) + 0x1000
+
+
+def spawn_weapons(ex):
+    """{enemy: [(EquipItem1[,EquipItem2], how often)]}: the six the overworld's map gives each of SPAWNS' most"""
+    import collections
+    from shops import field_units
+    want = {e for es, _ in SPAWNS.values() for e in es}
+    c = collections.defaultdict(collections.Counter)
+    for _, _, _, raw in field_units(ex):
+        for o in nin.byml(raw).get("Objs", []):
+            if o.get("UnitConfigName") in want:
+                p = o.get("!Parameters") or {}
+                w = [p[k] for k in ("EquipItem1", "EquipItem2") if str(p.get(k, "Default")) not in ("Default", "")]
+                if w:
+                    c[o["UnitConfigName"]][",".join(w)] += 1
+    return {e: c[e].most_common(6) for e in want}
+
+
+def spawn_edit(ex, files, sizes):
+    """SPAWNS into Bootup.pack's {name: bytes}: every area's Enemy list, and the spawn event's gated branches"""
+    weapons = spawn_weapons(ex)
+    raw = files["Ecosystem/AreaData.sbyml"]
+    areas = oead.byml.from_binary(nin.yaz0(raw))
+    for a in areas:  # (the Animal lists, as Waikuteru's big enemies: from the Enemy lists too, a crowd swarmed Link)
+        for kind in ("Animal",):
+            if not isinstance(a.get(kind), oead.byml.Array):  # (missing, or an empty string)
+                a[kind] = oead.byml.Array()
+            for es, _ in SPAWNS.values():
+                for e in es:
+                    a[kind].append(to_byml({"name": e, "num": oead.F32(1.0), "weapons": [
+                        {"name": w, "prob": oead.F32(float(n))} for w, n in weapons[e]]}))
+    data = oead.byml.to_binary(areas, big_endian=False, version=2)
+    files["Ecosystem/AreaData.sbyml"] = oead.yaz0.compress(data) if raw[:4] == b"Yaz0" else data
+    sizes["Ecosystem/AreaData.byml"] = len(data) + 0x1000
+    # the overworld's spawns as Link travels (the Animal lists' event; the game's NearCreate branch - near him, on flat
+    # dry ground, not while he rides - is kept for other events)
+    for name, near in (("EventFlow/AutoPlacement_Animal.bfevfl", False),):
+        f = evfl.EventFlow()
+        f.read(files[name])
+        fl = Flow(f.flowchart)
+        root = f.flowchart.entry_points[0].main_event.v
+        if not isinstance(root.data, ForkEvent):  # (the Animal event starts with a check: a fork before it, as Waikuteru's)
+            join = fl._add(JoinEvent())
+            fork = ForkEvent()
+            fork.forks, fork.join = [make_rindex(root)], make_rindex(join)
+            root = fl._add(fork)
+            f.flowchart.entry_points[0].main_event = make_index(root)
+        for flag, (es, most) in SPAWNS.items():
+            first = fl.action("AutoPlacement", "CreateData", {"MinNum": 1, "MaxNum": most, "GroupRadius": 8.0,
+                                                              "OffsetPosY": 0.0, "RideList": "", "Mimicry": False,
+                                                              "EquipWeaponActorCount": -1})
+            if near:
+                first = fl.switch("AutoPlacement", "WaterDepth", {"Depth": 0.0}, {0: first})
+                first = fl.switch("AutoPlacement", "GroundNorm", {"Angle": 10.0}, {1: first})
+                first = fl.action("AutoPlacement", "NearCreate", {"WaitFrame": 1}, first)
+                first = fl.switch("AutoPlacement", "PlayerRideHorse", {}, {0: first})
+            gate = fl.switch("AutoPlacement", "CheckGameData", {"Label": flag}, {1: first})
+            for e in es:
+                root.data.forks.append(make_rindex(fl.switch("AutoPlacement", "EcoAreaActorName", {"ActorName": e},
+                                                             {1: gate})))
+        files[name] = flow_bytes(f)
+        sizes[name] = len(files[name]) + 0x1000
+
 def main(ex, out):
     romfs, aoc = os.path.join(ex, "romfs"), os.path.join(ex, "aoc1")
 
@@ -234,16 +458,22 @@ def main(ex, out):
     bw = oead.SarcWriter.from_sarc(boot)
     gd = oead.Sarc(oead.yaz0.decompress(bytes(boot.get_file("GameData/gamedata.ssarc").data)))
     gw = oead.SarcWriter.from_sarc(gd)
-    name = next(f.name for f in gd.get_files() if "bool_data" in f.name)
-    b = oead.byml.from_binary(bytes(gd.get_file(name).data))
-    have = {str(e["DataName"]) for e in b["bool_data"]}
-    for fl in [PENDING, DONE, VOID, NEVER] + QFLAGS:
-        if fl not in have:
-            b["bool_data"].append(to_byml({
-                "DataName": fl, "DeleteRev": s32(0xFFFFFFFF), "HashValue": s32(zlib.crc32(fl.encode())),
-                "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
-                "IsProgramWritable": True, "IsSave": False, "MaxValue": True, "MinValue": False, "ResetType": s32(0)}))
-    gw.files[name] = oead.byml.to_binary(b, big_endian=False, version=2)
+    # (the first bool list is a revival one - the game's per-object flags; the spawn events' checks read the spawn
+    # flags only from a plain one, as Waikuteru's randomizer keeps its own)
+    first = next(f.name for f in gd.get_files() if "bool_data" in f.name)
+    plain = next(f.name for f in gd.get_files() if f.name.lstrip("/").startswith("bool_data"))
+    for name, flags in ((first, [PENDING, DONE, VOID, NEVER] + QFLAGS + list(ENV) + [f"AP_Want_{w}" for w in WANTS]),
+                        (plain, list(SPAWNS))):  # (the quests' own flags: the game has them, saved)
+        b = oead.byml.from_binary(bytes(gw.files[name] if name in gw.files else gd.get_file(name).data))
+        have = {str(e["DataName"]) for e in b["bool_data"]}
+        for fl in flags:
+            if fl not in have:
+                b["bool_data"].append(to_byml({
+                    "DataName": fl, "DeleteRev": s32(0xFFFFFFFF), "HashValue": s32(zlib.crc32(fl.encode())),
+                    "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
+                    "IsProgramWritable": True, "IsSave": False, "MaxValue": True, "MinValue": False,
+                    "ResetType": s32(0)}))
+        gw.files[name] = oead.byml.to_binary(b, big_endian=False, version=2)
     gdata = gw.write()[1]
     bw.files["GameData/gamedata.ssarc"] = oead.yaz0.compress(gdata)
     sizes["GameData/gamedata.sarc"] = len(gdata) + 0x1000
@@ -253,12 +483,36 @@ def main(ex, out):
     eib = oead.byml.to_binary(ei, big_endian=False, version=2)
     bw.files["Event/EventInfo.product.sbyml"] = oead.yaz0.compress(eib)
     sizes["Event/EventInfo.product.byml"] = len(eib) + 0x1000
+    spawn = {k: bytes(boot.get_file(k).data) for k in ("Ecosystem/AreaData.sbyml",
+                                                        "EventFlow/AutoPlacement_Animal.bfevfl")}
+    if SPAWN_TRAPS:
+        spawn_edit(ex, spawn, sizes)
+    for k, v in spawn.items():
+        bw.files[k] = v
     put("Pack/Bootup.pack", bw.write()[1])
+    # the banners' words, in the English message files (the game's empty Dummy.msbt as the start)
+    from ap_item import LANGS, msbt_add
+    bn = banners()
+    assert len(bn) < SYNC - DEMOS, "more banners than flags"
+    for lang in LANGS:
+        rel = f"Pack/Bootup_{lang}.pack"
+        pack_raw = src(rel)
+        pack = nin.sarc(pack_raw)
+        mkey = f"Message/Msg_{lang}.product.ssarc"
+        msg = nin.sarc(pack[mkey])
+        msg[f"EventFlowMsg/{MSG_FILE}.msbt"] = msbt_add(
+            msg["EventFlowMsg/Dummy.msbt"], {f"Banner{k}": text for k, (_, text, _) in enumerate(bn)})
+        msg_new = nin.sarc_write(msg, nin.sarc_aligns(pack[mkey]))
+        pack[mkey] = nin.yaz0_store(msg_new, struct.unpack_from(">I", pack[mkey], 8)[0])
+        put(rel, nin.sarc_write(pack, nin.sarc_aligns(pack_raw)))
+        sizes[f"Message/Msg_{lang}.product.sarc"] = len(msg_new) + 0x1000
+    if ENV_TRAPS:
+        env_tags(ex, out, sizes)
     pack_statics(aoc, out)
     # the size table (the overlay's own: ap_item.py made one)
     rel = "System/Resource/ResourceSizeTable.product.srsizetable"
     put(rel, rstb_update(src(rel), sizes))
-    print(f"give trigger: {len(ITEMS)} items, event {FLOW}<AP_Dispatch>")
+    print(f"give trigger: {len(ITEMS)} items, {len(banners())} banners, event {FLOW}<AP_Dispatch>")
 
 
 if __name__ == "__main__":

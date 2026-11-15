@@ -221,7 +221,7 @@ class BotWContext(CommonContext):
     async def trap_in(self, data: dict):
         name = data.get("trap_name", "")
         mine = name if name in TRAPS else self.random_trap()  # another game's trap: one of ours
-        await self.trap(ITEMS[mine][1][0].split()[1])
+        await self.trap(next(a for a in ITEMS[mine][1] if a.startswith("!trap")).split()[1])
         self.notify("TrapLink: ", (name, "trap"), " from ", (data.get("source", "?"), "player"))
 
     @staticmethod
@@ -388,8 +388,8 @@ class BotWContext(CommonContext):
                     if int(k) != copy:
                         self.state["step"] = self.state.get("step", 0) + 1
                         continue
-                if action.startswith("!demo"):
-                    pass  # (the in-game item scene: only the native client drives it; the give after it is the fallback)
+                if action.startswith(("!demo", "!msg")):
+                    pass  # (the in-game item scene or banner: only the native client drives it; the give after it is the fallback)
                 elif action.startswith("!trap"):
                     await self.trap(action.split()[1])
                     await self.trap_out(name)
@@ -413,16 +413,52 @@ class BotWContext(CommonContext):
 
     async def trap(self, kind):
         port = self.config["port"]
+        weather = {"thunderstorm": "thunderstorm", "blizzard": "heavy_snow", "downpour": "heavy_rain"}
+        prohibit = {"no_warp": ("WarpProhibition", 90), "no_save": ("SaveProhibition", 90),
+                    "no_eat": ("EatProhibition", 90)}
+        # the overlay's environment and enemy traps: a want flag, then its sync event (tools/give_trigger.py SYNC)
+        wants = {"heat": ("AP_Env_Heat", 60), "cold": ("AP_Env_Cold", 60), "fire": ("AP_Env_Fire", 8),
+                 "fog": ("AP_Env_Fog", 120), "dark": ("AP_Env_Dark", 120), "bokoblins": ("AP_Spawn_Bokoblin", 120),
+                 "moblins": ("AP_Spawn_Moblin", 90), "lynels": ("AP_Spawn_Lynel", 60)}
         if kind == "midnight":
             await self.sw.cmd("time 0", port)
-        elif kind == "thunderstorm":
+        elif kind in weather:
             prev = (await self.sw.cmd("weather", port)).get("data", {}).get("weather", "game")
-            await self.sw.cmd("weather thunderstorm", port)
+            await self.sw.cmd(f"weather {weather[kind]}", port)
 
             async def restore():
                 await asyncio.sleep(120)
                 await self.sw.cmd(f"weather {prev}", port)
             asyncio.create_task(restore())
+        elif kind in prohibit:  # (a flag for a while: the game's prohibitions, the overlay's weather tags and spawns;
+            flag, secs = prohibit[kind]  # not saved, a load ends them too)
+            await self.sw.cmd(f"gdt {flag} 1", port)
+
+            async def lift():
+                await asyncio.sleep(secs)
+                await self.sw.cmd(f"gdt {flag} 0", port)
+            asyncio.create_task(lift())
+        elif kind in wants:
+            flag, secs = wants[kind]
+
+            async def sync(v):  # (the sync entry: AP_Q128 and the event, as the item scenes start it)
+                await self.sw.cmd(f"gdt AP_Want_{flag} {v}", port)
+                for c in ("gdt AP_Done 0", "gdt AP_Q128 1", "gdt AP_Pending 1", "apscene"):
+                    await self.sw.cmd(c, port)
+
+            async def lift():
+                await asyncio.sleep(secs)
+                await sync(0)
+            await sync(1)
+            asyncio.create_task(lift())
+        elif kind == "drain":
+            now = (await self.sw.cmd("rupees", port)).get("data", {}).get("rupees")
+            if now is not None:
+                await self.sw.cmd(f"rupees {max(0, now - 50)}", port)
+        elif kind == "warp":
+            import random
+            await self.sw.cmd(f"goto stable {random.randint(1, 15)}", port)
+        # ("ouch", "thief": the native client only - the console can't set Link's hearts or take from the pouch)
 
     def run_gui(self):
         from kvui import GameManager

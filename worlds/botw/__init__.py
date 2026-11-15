@@ -214,4 +214,4 @@ class BotWWorld(World):
                 # checks that are a count the game keeps reaching a number, not a flag going on: id -> [name, number]
                 "counters": {str(LOC_IDS[l["name"]]): [l["flag"], l["min"]] for l in LOCATIONS if "min" in l},
                 "master_sword": ITEM_IDS["Progressive Master Sword"],
-                "traps": {n: ITEMS[n][1][0].split()[1] for n in TRAPS}}
+                "traps": {n: next(a for a in ITEMS[n][1] if a.startswith("!trap")).split()[1] for n in TRAPS}}

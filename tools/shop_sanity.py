@@ -1,7 +1,7 @@
 """Saved flags Archipelago keeps in the game's own save, added to the game data (gamedata and the save format) -
 RomFS overlay files made from your own game files:
-  - shop sanity: every shop slot in Hyrule is a check (tools/shops.py has the slots). The shops still sell what they
-    sold; Savage Wind sets a slot's AP_Shop_ flag the first time Link buys it (runtime/ap_event.c)
+  - shop sanity: every shop slot in Hyrule is a check (tools/shops.py has the slots), sold as its own Archipelago
+    Item until it's bought (tools/shop_items.py); Savage Wind sets the slot's AP_Shop_ flag then (runtime/ap_event.c)
   - region lock: AP_RegionLock (the slot has it on: the client sets it) and AP_Region_<n>, a region's map received
     (n: tools/regions.py; the Great Plateau's is never locked)
 
@@ -17,6 +17,7 @@ import oead
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ap_item import put  # noqa: E402
 from give_trigger import rstb_update, s32, to_byml  # noqa: E402
+from shop_items import build as shop_items  # noqa: E402
 from shops import shop_slots  # noqa: E402
 
 
@@ -28,6 +29,7 @@ def main(ex, out):
         return open(p if os.path.exists(p) else os.path.join(romfs, rel), "rb").read()
 
     slots = shop_slots(ex)
+    wares = [f for f, _ in shop_items(ex, out)]  # (each counter's Archipelago Item: bought once, never back)
     boot = oead.Sarc(src("Pack/Bootup.pack"))
     bw = oead.SarcWriter.from_sarc(boot)
     gd = oead.Sarc(oead.yaz0.decompress(bytes(boot.get_file("GameData/gamedata.ssarc").data)))
@@ -35,7 +37,7 @@ def main(ex, out):
     name = next(f.name for f in gd.get_files() if f.name.startswith("/bool_data"))  # (not one the Blood Moon resets)
     b = oead.byml.from_binary(bytes(gd.get_file(name).data))
     have = {str(e["DataName"]) for e in b["bool_data"]}
-    flags = [f for f in [s["flag"] for s in slots] + ["AP_RegionLock"] + [f"AP_Region_{i:02d}" for i in range(15)]
+    flags = [f for f in [s["flag"] for s in slots] + wares + ["AP_RegionLock"] + [f"AP_Region_{i:02d}" for i in range(15)]
              if f not in have]
     for fl in flags:
         b["bool_data"].append(to_byml({

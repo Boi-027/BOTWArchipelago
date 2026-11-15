@@ -11,6 +11,7 @@ class BotWItem(Item):
 # name: (classification, give commands, copies in the pool (None = weighted filler), filler weight)
 # Append only: the id is the position in this table, a reorder breaks running seeds.
 # Each give is "<actor> <count>" for the Savage Wind console's give command; "!trap <kind>" is handled by the client.
+# "!msg <n>": the game's banner (BANNERS below), then the actions after it.
 # "!demo <n>": the native client hands the item over with the game's own item-get scene (tools/give_trigger.py, AP_Q<n>)
 # and skips the rest; without that trigger in the game's files the actions after it give the item directly.
 # "@<k> <action>": only for the k-th copy of that item received (progressive items).
@@ -115,7 +116,56 @@ ITEMS = {
        for i, r in enumerate(["Hebra", "Tabantha", "Gerudo", "Wasteland", "Woodland", "Central", "Great Plateau",
                               "Dueling Peaks", "Lake", "Eldin", "Akkala", "Lanayru", "Hateno", "Faron", "Ridgeland"])
        if r != "Great Plateau"},
+    # more traps, as Waikuteru's randomizer has them: weather, the game's own prohibitions (90 seconds), a hit, a
+    # thief, a warp to a random stable; and filler: rupees, a full heal
+    "Blizzard Trap": (IC.trap, ["!trap blizzard"], None, 0),
+    "Downpour Trap": (IC.trap, ["!trap downpour"], None, 0),
+    "No Warping Trap": (IC.trap, ["!trap no_warp"], None, 0),
+    "No Saving Trap": (IC.trap, ["!trap no_save"], None, 0),
+    "Hunger Trap": (IC.trap, ["!trap no_eat"], None, 0),
+    "Ouch Trap": (IC.trap, ["!trap ouch"], None, 0),
+    "Rupee Drain Trap": (IC.trap, ["!trap drain"], None, 0),
+    "Warp Trap": (IC.trap, ["!trap warp"], None, 0),
+    "Red Rupee": (IC.filler, ["!add CurrentRupee 20"], None, 6),
+    "Purple Rupee": (IC.filler, ["!add CurrentRupee 50"], None, 4),
+    "Silver Rupee": (IC.filler, ["!add CurrentRupee 100"], None, 2),
+    "Full Recovery": (IC.filler, [], None, 4),  # (the banner's event heals: Demo_RecoverPlayerLife)
+    # the environment for a while (the game's own weather tags, switched by a flag: tools/give_trigger.py),
+    # enemies that join the wildlife wherever Link goes for a while (as Waikuteru's spawns), a pouch thief
+    "Heat Trap": (IC.trap, ["!trap heat"], None, 0),
+    "Cold Trap": (IC.trap, ["!trap cold"], None, 0),
+    "Fire Trap": (IC.trap, ["!trap fire"], None, 0),
+    "Fog Trap": (IC.trap, ["!trap fog"], None, 0),
+    "Darkness Trap": (IC.trap, ["!trap dark"], None, 0),
+    "Bokoblin Trap": (IC.trap, ["!trap bokoblins"], None, 0),
+    "Moblin Trap": (IC.trap, ["!trap moblins"], None, 0),
+    "Lynel Trap": (IC.trap, ["!trap lynels"], None, 0),
+    "Thief Trap": (IC.trap, ["!trap thief"], None, 0),
 }
+
+# The game's own banner (its centred message, as Waikuteru's randomizer shows them) for every item without an
+# item-get scene: "!msg <DEMOS + 1 + its place here>" goes first (tools/give_trigger.py reads this list for the words
+# and the events: keep it a plain list; append only, as ITEMS).
+DEMOS = 32  # (tools/give_trigger.py's ITEMS: the item-get scenes)
+BANNERS = [
+    "Hylian Shield", "Climbing Gear Set", "Rubber Armor Set", "Barbarian Armor Set", "Zora Armor", "Snowquill Set",
+    "Flamebreaker Set", "Royal Claymore", "Savage Lynel Sword", "Savage Lynel Bow", "Great Eagle Bow",
+    "Ancient Bladesaw", "Guardian Sword++", "Lightscale Trident", "Scimitar of the Seven", "Boulder Breaker",
+    "Daybreaker", "Ancient Arrows x5", "Arrows x10", "Fire Arrows x5", "Ice Arrows x5", "Shock Arrows x5",
+    "Bomb Arrows x5", "Diamond", "Ruby", "Sapphire", "Topaz", "Opal x3", "Amber x5", "Star Fragment", "Lynel Guts",
+    "Ancient Core", "Hearty Durian x3", "Big Hearty Truffle x2", "Endura Carrot x2", "Mighty Bananas x5",
+    "Silent Princess x3", "Wood", "Royal Guard's Sword", "Ancient Screw x3", "Thunderstorm Trap", "Midnight Trap",
+    "500 Rupees", "Weapon Slot", "Bow Slot", "Shield Slot",
+    "Hebra Map", "Tabantha Map", "Gerudo Map", "Wasteland Map", "Woodland Map", "Central Map", "Dueling Peaks Map",
+    "Lake Map", "Eldin Map", "Akkala Map", "Lanayru Map", "Hateno Map", "Faron Map", "Ridgeland Map",
+    "Blizzard Trap", "Downpour Trap", "No Warping Trap", "No Saving Trap", "Hunger Trap", "Ouch Trap",
+    "Rupee Drain Trap", "Warp Trap", "Red Rupee", "Purple Rupee", "Silver Rupee", "Full Recovery",
+    "Heat Trap", "Cold Trap", "Fire Trap", "Fog Trap", "Darkness Trap", "Bokoblin Trap", "Moblin Trap", "Lynel Trap",
+    "Thief Trap",
+]
+for _i, _n in enumerate(BANNERS):
+    _c, _acts, _copies, _w = ITEMS[_n]
+    ITEMS[_n] = (_c, [f"!msg {DEMOS + 1 + _i}"] + _acts, _copies, _w)
 
 ITEM_IDS = {name: ITEM_BASE + i for i, name in enumerate(ITEMS)}
 CHAMPION_POWERS = ["Progressive Mipha's Grace", "Progressive Daruk's Protection", "Progressive Revali's Gale",

@@ -732,6 +732,48 @@ index 2123f0f..31cb8b7 100644
      if (!control_enabled()) return;
      static const ControlCmd dev[] = {
          {"time", "[freeze | unfreeze | set <0-24> | <0-24>]", "Show or change the hour of the day", cmd_time, 0},
+diff --git a/runtime/control_input.c b/runtime/control_input.c
+index a9a847a..55c870e 100644
+--- a/runtime/control_input.c
++++ b/runtime/control_input.c
+@@ -245,6 +245,27 @@ void control_input_apply(uint64_t *b, int32_t *lx, int32_t *ly, int32_t *rx, int
+     }
+     control_fly_input(b, lx, ly);
+ }
++void input_control_key(const char *name);  // runtime/hle/input.c
++void input_control_type(const char *text);
++void input_control_wheel(float y);
++static void cmd_key(int argc, char **argv, ControlReply *r) {
++    if (argc != 2) { control_fail(r, "Usage: key <name> (an SDL key name: Return, Escape, PageUp...)"); return; }
++    input_control_key(argv[1]);
++}
++static void cmd_type(int argc, char **argv, ControlReply *r) {
++    if (argc < 2) { control_fail(r, "Usage: type <text>"); return; }
++    char text[512] = "";
++    for (int i = 1; i < argc; i++) {
++        if (i > 1) strncat(text, " ", sizeof text - strlen(text) - 1);
++        strncat(text, argv[i], sizeof text - strlen(text) - 1);
++    }
++    input_control_type(text);
++}
++static void cmd_wheel(int argc, char **argv, ControlReply *r) {
++    if (argc != 2) { control_fail(r, "Usage: wheel <notches> (up is positive)"); return; }
++    input_control_wheel((float)atof(argv[1]));
++}
++
+ static void cmd_input(int argc, char **argv, ControlReply *r) {
+     (void)argv;
+     if (argc != 1) { control_fail(r, "Usage: input"); return; }
+@@ -267,6 +288,9 @@ void control_input_init(void) {
+         {"stick", "<l|r> <x> <y> [frames]", "Move a stick (axes -1 to 1)", cmd_stick},
+         {"look", "<yaw> <pitch> | status | stop", "Turn the camera to a yaw and pitch in degrees (either may be keep)", cmd_look},
+         {"input", "", "Show the input currently applied", cmd_input},
++        {"key", "<name>", "Tap a keyboard key as a real key event (SDL name: Return, Escape, PageUp)", cmd_key},
++        {"type", "<text>", "Type text as real key and text events", cmd_type},
++        {"wheel", "<notches>", "Turn the mouse wheel (up is positive)", cmd_wheel},
+     };
+     control_register(cmds, sizeof cmds / sizeof *cmds);
+     atomic_store(&enabled, true);
 diff --git a/runtime/gdt_flags.c b/runtime/gdt_flags.c
 new file mode 100644
 index 0000000..5d68a46
@@ -915,6 +957,31 @@ index 8a23d0e..4b40109 100644
  // Events held at the console's 30 fps whatever the chosen rate: a wait in them can miss its moment at another rate.
  //   Master Kohga's entrance in the Yiga Clan hideout froze after "The strong! The burly!!" (#196, #455, #533): the picture
  //   went on, the cutscene never finished. The hideout's EventTag starts Electric_Relic<WaitStable>, which calls the demo
+diff --git a/runtime/hle/input.c b/runtime/hle/input.c
+index 5af064b..b3de775 100644
+--- a/runtime/hle/input.c
++++ b/runtime/hle/input.c
+@@ -875,6 +875,20 @@ static void test_push(uint64_t frame, unsigned long start, unsigned long len, co
+     }
+ }
+ 
++// The control port's `key`, `type` and `wheel` (runtime/control_input.c): real SDL events, as a player's keyboard would
++// send them - a named key tapped ("Return", "PageUp"), text typed ({Return} etc. inside it), the wheel turned
++void input_control_key(const char *name) {
++    SDL_Scancode sc = SDL_GetScancodeFromName(name);
++    push_key(sc, SDL_KMOD_NONE, true), push_key(sc, SDL_KMOD_NONE, false);
++}
++void input_control_type(const char *text) { test_push(0, 0, 0, "type", text); }
++void input_control_wheel(float y) {
++    SDL_Event e;
++    memset(&e, 0, sizeof e);
++    e.type = SDL_EVENT_MOUSE_WHEEL, e.wheel.which = TEST_DEVICE, e.wheel.y = y;
++    SDL_PushEvent(&e);
++}
++
+ static void host_test_frame(uint64_t frame) {
+     static const char *hspec, *bspec;
+     static int init;
 diff --git a/runtime/items.c b/runtime/items.c
 index 8449796..d070754 100644
 --- a/runtime/items.c
@@ -1148,10 +1215,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..8abe01a
+index 0000000..0f3599f
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,834 @@
+@@ -0,0 +1,1007 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -1161,7 +1228,8 @@ index 0000000..8abe01a
 +//    only for the k-th copy of the item), from a count kept per room in <data>/ap/
 +//  - the goal: Calamity Ganon defeated with the champion powers (and Master Sword) the slot data asks for
 +//  - DeathLink (runtime/assists.c), TrapLink, RingLink (the CurrentRupee flag)
-+// Notifications are drawn at the bottom left of the game (ap_overlay_draw, from menu.mm's frame).
++// Notifications are drawn at the bottom left of the game (ap_overlay_draw, from menu.mm's frame); Enter in the world
++// opens the chat there: the room's log to scroll, and a line to talk or ask for a !hint (a Say packet).
 +#include <math.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -1186,6 +1254,7 @@ index 0000000..8abe01a
 +#include <nlohmann/json.hpp>
 +
 +#include "imgui.h"
++#include "imgui_internal.h"  // (ImTextCharFromUtf8)
 +
 +extern "C" {
 +#include "../game_sites.h"
@@ -1209,6 +1278,8 @@ index 0000000..8abe01a
 +bool ap_event_available(void);                          // runtime/ap_event.c
 +void ap_event_request(void);
 +bool framepace_in_event(void);                          // runtime/hle/framepace.c
++bool framepace_menu_ui(void);
++bool framepace_paused(void);
 +float ap_region_fog(void);                              // runtime/ap_region.c
 +void ap_note(const char *text);
 +}
@@ -1227,9 +1298,15 @@ index 0000000..8abe01a
 +struct Note { std::vector<Seg> segs; double born; };
 +std::mutex g_note_lock;
 +std::deque<Note> g_notes;
++std::deque<Note> g_history;  // (everything the room said, for the chat's scrollback)
 +double now_s() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 +void notify(std::vector<Seg> segs) {
++    std::string line;  // (the log keeps them too: what the multiworld said, for a report)
++    for (const Seg &s : segs) line += s.text;
++    LOG("[ap] chat: %s\n", line.c_str());
 +    std::lock_guard<std::mutex> l(g_note_lock);
++    g_history.push_back({segs, now_s()});
++    while (g_history.size() > 300) g_history.pop_front();
 +    g_notes.push_back({std::move(segs), now_s()});
 +    while (g_notes.size() > 5) g_notes.pop_front();
 +}
@@ -1336,6 +1413,11 @@ index 0000000..8abe01a
 +    if (g != g_item_names.end() && g->second.count(id)) return g->second[id];
 +    return "item " + std::to_string(id);
 +}
++std::string loc_name(int64_t loc, int finder) {
++    auto g = g_loc_names.find(g_player_games[finder]);
++    if (g != g_loc_names.end() && g->second.count(loc)) return g->second[loc];
++    return "location " + std::to_string(loc);
++}
 +std::string player(int slot) { return g_player_names.count(slot) ? g_player_names[slot] : "player " + std::to_string(slot); }
 +
 +void set_status_connected() {
@@ -1409,14 +1491,34 @@ index 0000000..8abe01a
 +        int to = p.value("receiving", -1);
 +        const json &it = p["item"];
 +        int from = it.value("player", -1), flags = it.value("flags", 0);
-+        if (to != g_slot && from != g_slot) return;
 +        Seg item{item_name(it.value("item", (int64_t)0), to), item_col(flags)};
-+        if (to == from) notify({{"Found your ", CREAM}, item});
++        Seg loc{"  -  " + loc_name(it.value("location", (int64_t)0), from), GREY};
++        if (to == g_slot && from == g_slot) notify({{"Found your ", CREAM}, item});
 +        else if (to == g_slot) notify({{"Received ", CREAM}, item, {" from ", CREAM}, {player(from), PLAYER}});
-+        else {
-+            std::string loc = g_loc_names[GAME].count(it.value("location", (int64_t)0)) ? g_loc_names[GAME][it.value("location", (int64_t)0)] : "";
-+            notify({{"Sent ", CREAM}, item, {" to ", CREAM}, {player(to), PLAYER}, {loc.empty() ? "" : "  -  " + loc, GREY}});
++        else if (from == g_slot) notify({{"Sent ", CREAM}, item, {" to ", CREAM}, {player(to), PLAYER}, loc});
++        else if (to == from) notify({{player(from), PLAYER}, {" found their ", CREAM}, item, loc});  // (the others' checks too)
++        else notify({{player(from), PLAYER}, {" sent ", CREAM}, item, {" to ", CREAM}, {player(to), PLAYER}, loc});
++    } else if (cmd == "PrintJSON" && p.value("type", "") != "Tutorial") {
++        // the rest the room says - chat, hints, answers to commands, who joined - as its parts, each in its colour
++        std::vector<Seg> segs;
++        auto add = [&](std::string text, ImU32 col) {
++            for (size_t nl; (nl = text.find('\n')) != std::string::npos; text.erase(0, nl + 1)) {
++                if (nl) segs.push_back({text.substr(0, nl), col});
++                if (!segs.empty()) notify(segs), segs.clear();
++            }
++            if (!text.empty()) segs.push_back({text, col});
++        };
++        for (const json &part : p.value("data", json::array())) {
++            std::string t = part.value("type", ""), text = part.value("text", "");
++            int who = part.value("player", 0);
++            if (t == "player_id") add(player(atoi(text.c_str())), PLAYER);
++            else if (t == "player_name") add(text, PLAYER);
++            else if (t == "item_id") add(item_name(atoll(text.c_str()), who), item_col(part.value("flags", 0)));
++            else if (t == "location_id") add(loc_name(atoll(text.c_str()), who), GREY);
++            else add(text, CREAM);
 +        }
++        // (the server's note that WinHTTP's websocket has no compression: nothing a player can act on)
++        if (!segs.empty() && segs[0].text.find("compressed websocket") == std::string::npos) notify(segs);
 +    } else if (cmd == "Bounced") {
 +        json tags = p.value("tags", json::array()), d = p.value("data", json::object());
 +        auto has = [&](const char *t) { return std::find(tags.begin(), tags.end(), t) != tags.end() && g_tags.count(t); };
@@ -1602,12 +1704,6 @@ index 0000000..8abe01a
 +        out += w, col += w.size();
 +    }
 +    return out;
-+}
-+
-+std::string loc_name(int64_t loc, int finder) {
-+    auto g = g_loc_names.find(g_player_games[finder]);
-+    if (g != g_loc_names.end() && g->second.count(loc)) return g->second[loc];
-+    return "location " + std::to_string(loc);
 +}
 +
 +std::string hints_text() {
@@ -1796,15 +1892,27 @@ index 0000000..8abe01a
 +        int copy = 0;  // (which copy of this item this is: "@<k> <action>" is only for the k-th, progressive items)
 +        for (int i = 0; i <= g_given; i++) copy += g_items[i].value("item", (int64_t)0) == id;
 +        bool by_event = false, wrote = false;  // (the scene gave it, its count with it; it wrote game data to keep)
-+        for (; g_step < (int)steps.size(); g_step++, save_state()) {
-+            std::string s = steps[g_step].get<std::string>();
-+            if (s[0] == '@') {
-+                size_t sp = s.find(' ');
-+                if (sp == std::string::npos || atoi(s.c_str() + 1) != copy) continue;
-+                s = s.substr(sp + 1);
++        // filler and useful items: no banner or scene (the chat box says them), unless the scene is all that gives it
++        bool quiet = !(it.value("flags", 0) & 5);
++        auto step_of = [&](int i) {  // (step i for this copy, without its "@k ", or "" when it's another copy's)
++            std::string s = steps[i].get<std::string>();
++            if (s[0] != '@') return s;
++            size_t sp = s.find(' ');
++            return sp == std::string::npos || atoi(s.c_str() + 1) != copy ? std::string() : s.substr(sp + 1);
++        };
++        auto gives_after = [&](int i) {
++            for (int j = i + 1; j < (int)steps.size(); j++) {
++                std::string s = step_of(j);
++                if (!s.empty() && s.rfind("!demo", 0) && s.rfind("!msg", 0)) return true;
 +            }
++            return false;
++        };
++        for (; g_step < (int)steps.size(); g_step++, save_state()) {
++            std::string s = step_of(g_step);
++            if (s.empty()) continue;
 +            char w0[64] = "", w1[96] = "", w2[32] = "";
 +            sscanf(s.c_str(), "%63s %95s %31s", w0, w1, w2);
++            if ((!strcmp(w0, "!demo") || !strcmp(w0, "!msg")) && quiet && (w0[1] == 'm' || gives_after(g_step))) continue;
 +            if (!strcmp(w0, "!demo") || !strcmp(w0, "!msg")) {
 +                if (g_env_sync && !g_demo_raised) return;  // (a sync waits: it goes first, at the next tick)
 +                gdt_change(crc("AP_Want_Given"), g_given + 1, true);  // (the scene's event saves the count with it)
@@ -1928,19 +2036,158 @@ index 0000000..8abe01a
 +    }
 +}
 +
++// ---- the chat: Enter in the world opens it (runtime/ui/menu.mm sends it here); Esc or Enter on an empty line closes it
++std::atomic<bool> g_chat_open{false}, g_chat_appearing{false};
++float g_chat_scroll;  // (how far up the log is scrolled, in lines)
++
++void say(const std::string &text) {
++    if (!g_connected) return notify({{"Not connected to the multiworld: Options > Archipelago", RED}});
++    send(json::array({{{"cmd", "Say"}, {"text", text}}}));
++}
++
++// The game's own font (menu.mm loads its glyphs from the player's files) where it has every character of the text
++ImFont *g_game_font;
++ImFont *font_for(const std::string &s) {
++    if (!g_game_font) return ImGui::GetFont();
++    for (const char *p = s.c_str(); *p;) {
++        unsigned c;
++        int n = ImTextCharFromUtf8(&c, p, nullptr);
++        if (!n) break;
++        p += n;
++        if (!g_game_font->FindGlyphNoFallback((ImWchar)c)) return ImGui::GetFont();
++    }
++    return g_game_font;
++}
++float segs_width(const std::vector<Seg> &segs, float fs) {
++    float w = 0;
++    for (const Seg &s : segs) w += font_for(s.text)->CalcTextSizeA(fs, FLT_MAX, 0, s.text.c_str()).x;
++    return w;
++}
++// a line as the game writes its words: light text with a soft shadow under it
++void draw_segs(ImDrawList *dl, ImVec2 at, float fs, const std::vector<Seg> &segs, float alpha) {
++    for (const Seg &s : segs) {
++        ImFont *f = font_for(s.text);
++        ImU32 col = (s.col & 0x00ffffff) | ((ImU32)(((s.col >> 24) & 0xff) * alpha) << 24);
++        dl->AddText(f, fs, ImVec2(at.x + fs * .06f, at.y + fs * .08f), IM_COL32(0, 0, 0, (int)(150 * alpha)), s.text.c_str());
++        dl->AddText(f, fs, at, col, s.text.c_str());
++        at.x += f->CalcTextSizeA(fs, FLT_MAX, 0, s.text.c_str()).x;
++    }
++}
++// a band like the game's pick-up and quest banners: dark, fading out to the right, a thin light rule above and below
++void draw_band(ImDrawList *dl, ImVec2 a, ImVec2 b, float fade, float alpha) {
++    ImU32 dark = IM_COL32(0, 0, 0, (int)(165 * alpha)), clear = IM_COL32(0, 0, 0, 0);
++    ImU32 rule = IM_COL32(236, 232, 214, (int)(120 * alpha)), rule0 = IM_COL32(236, 232, 214, 0);
++    dl->AddRectFilled(a, b, dark);
++    dl->AddRectFilledMultiColor(ImVec2(b.x, a.y), ImVec2(b.x + fade, b.y), dark, clear, clear, dark);
++    float t = fmaxf(1.f, (b.y - a.y) * .03f);
++    dl->AddRectFilledMultiColor(a, ImVec2(b.x + fade, a.y + t), rule, rule0, rule0, rule);
++    dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - t), ImVec2(b.x + fade, b.y), rule, rule0, rule0, rule);
++}
++// a window like the game's item and info panels: rounded dark glass, a thin light bracket in each corner
++void draw_panel(ImDrawList *dl, ImVec2 a, ImVec2 b, float scale) {
++    dl->AddRectFilled(a, b, IM_COL32(12, 14, 13, 178), 9 * scale);
++    float in = 7 * scale, len = 13 * scale, t = 1.3f * scale;
++    ImU32 c = IM_COL32(214, 212, 196, 170);
++    for (int i = 0; i < 4; i++) {
++        float cx = i & 1 ? b.x - in : a.x + in, cy = i & 2 ? b.y - in : a.y + in, sx = i & 1 ? -1.f : 1.f, sy = i & 2 ? -1.f : 1.f;
++        dl->AddLine(ImVec2(cx, cy), ImVec2(cx + sx * len, cy), c, t);
++        dl->AddLine(ImVec2(cx, cy), ImVec2(cx, cy + sy * len), c, t);
++    }
++}
++// a rule as the game's panels draw one under a title: thin, light, fading out at both ends
++void draw_rule(ImDrawList *dl, float x0, float x1, float y, float scale) {
++    float m = (x0 + x1) / 2, t = fmaxf(1.f, scale);
++    ImU32 on = IM_COL32(214, 212, 196, 120), off = IM_COL32(214, 212, 196, 0);
++    dl->AddRectFilledMultiColor(ImVec2(x0, y), ImVec2(m, y + t), off, on, on, off);
++    dl->AddRectFilledMultiColor(ImVec2(m, y), ImVec2(x1, y + t), on, off, off, on);
++}
++void draw_mark(ImDrawList *dl, float cx, float cy, float r, float alpha) {  // (a small Sheikah-blue diamond)
++    dl->AddQuadFilled(ImVec2(cx, cy - r), ImVec2(cx + r, cy), ImVec2(cx, cy + r), ImVec2(cx - r, cy),
++                      IM_COL32(110, 226, 240, (int)(255 * alpha)));
++}
++
++void chat_draw(ImGuiIO &io, float scale) {  // (g_note_lock held)
++    static char buf[256];
++    if (g_chat_appearing.exchange(false)) buf[0] = 0, g_chat_scroll = 0;
++    float fs = 28 * scale, lh = fs * 1.32f, pad = 18 * scale;
++    float w = fminf(io.DisplaySize.x * .52f, 1000 * scale), x = 24 * scale;
++    int rows = (int)fmaxf(4.f, io.DisplaySize.y * .40f / lh);
++    float input_y = io.DisplaySize.y * .86f, top = input_y - rows * lh - pad * 1.4f, log_top = top + pad * .7f;
++    ImDrawList *dl = ImGui::GetForegroundDrawList();
++    draw_panel(dl, ImVec2(x, top), ImVec2(x + w, input_y + lh + pad * .7f), scale);
++    // the log, newest at the bottom: the wheel, PgUp / PgDn and Up / Down move it
++    int n = (int)g_history.size(), most = n > rows ? n - rows : 0;
++    g_chat_scroll += io.MouseWheel * 3;
++    if (ImGui::IsKeyPressed(ImGuiKey_PageUp)) g_chat_scroll += rows - 1;
++    if (ImGui::IsKeyPressed(ImGuiKey_PageDown)) g_chat_scroll -= rows - 1;
++    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) g_chat_scroll += 1;
++    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) g_chat_scroll -= 1;
++    g_chat_scroll = fmaxf(0.f, fminf(g_chat_scroll, (float)most));
++    int last = n - (int)g_chat_scroll, first = last - rows < 0 ? 0 : last - rows;
++    float ly = input_y - pad * .45f - (last - first) * lh;
++    dl->PushClipRect(ImVec2(x, log_top), ImVec2(x + w, input_y - pad * .3f), true);
++    for (int i = first; i < last; i++, ly += lh) {
++        draw_mark(dl, x + pad + 5 * scale, ly + lh * .5f, 4.5f * scale, .8f);
++        draw_segs(dl, ImVec2(x + pad + 18 * scale, ly + (lh - fs) * .5f), fs, g_history[i].segs, 1);
++    }
++    dl->PopClipRect();
++    if (most > 0) {  // (where in the log: a thin bar at the right)
++        float span = input_y - pad * .9f - log_top, bh = span * rows / n, by = log_top + (span - bh) * (1 - g_chat_scroll / most);
++        dl->AddRectFilled(ImVec2(x + w - 6 * scale, by), ImVec2(x + w - 3 * scale, by + bh), IM_COL32(236, 232, 214, 110), 2 * scale);
++    }
++    // the line to type in: an invisible ImGui field over the band's last row, its text in the game's font
++    draw_rule(dl, x + pad, x + w - pad, input_y - pad * .15f, scale);
++    ImGui::SetNextWindowPos(ImVec2(x + pad, input_y), ImGuiCond_Always);
++    ImGui::SetNextWindowSize(ImVec2(w - pad * 2, lh + 4 * scale), ImGuiCond_Always);
++    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
++    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, (lh - fs) * .5f));
++    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 0));
++    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(245, 246, 232, 255));
++    ImGui::Begin("##apchat", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove |
++                                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
++    ImFont *f = g_game_font ? g_game_font : ImGui::GetFont();
++    ImGui::PushFont(f);
++    ImGui::SetWindowFontScale(fs / (f->FontSize * io.FontGlobalScale));  // (the frame scales fonts too: the same size as the log)
++    ImGui::SetNextItemWidth(-1);
++    ImGui::SetKeyboardFocusHere();
++    if (ImGui::InputText("##say", buf, sizeof buf, ImGuiInputTextFlags_EnterReturnsTrue)) {
++        std::string text = buf;
++        while (!text.empty() && text.back() == ' ') text.pop_back();
++        if (!text.empty()) say(text);
++        buf[0] = 0;
++        g_chat_open = false;
++    }
++    ImGui::PopFont();
++    ImGui::End();
++    ImGui::PopStyleColor(2);
++    ImGui::PopStyleVar(2);
++}
++
 +}  // namespace
 +
-+// Every frame (menu.mm's menu_draws): starts the client once; true while a notification is up, so the overlay draws
++extern "C" bool ap_chat_is_open(void) { return g_chat_open.load(); }
++extern "C" void ap_chat_set_open(bool open) {
++    if (open && !g_chat_open.load()) g_chat_appearing = true;
++    g_chat_open = open;
++}
++// Enter opens it only out in the world (not a menu, talk, scene or pause: there Enter is the A button) with a room set
++extern "C" bool ap_chat_can_open(void) {
++    return g_settings.ap_server[0] && in_world() && !framepace_menu_ui() && !framepace_paused() && !framepace_in_event();
++}
++
++// Every frame (menu.mm's menu_draws): starts the client once; true while a notification or the chat is up, so the
++// overlay draws
 +bool ap_overlay_active(void) {
 +    static std::once_flag started;
 +    std::call_once(started, [] { std::thread(net_thread).detach(); std::thread(tick_thread).detach(); });
 +    std::lock_guard<std::mutex> l(g_note_lock);
-+    return !g_notes.empty();
++    return !g_notes.empty() || g_chat_open.load();
 +}
 +
-+// The notifications, bottom left, in the style of the game's menus: a dark band between gold rules, a Sheikah-blue
-+// mark, cream text. Called every frame from menu.mm (outside the menus); the first call starts the client.
-+void ap_overlay_draw(ImGuiIO &io, float scale) {
++// The notifications, bottom left, as the game shows what Link picks up: a dark band fading out to the right between
++// thin light rules, a Sheikah-blue mark, the game's own font. With the chat open, the room's log takes their place.
++// Called every frame from menu.mm (outside the menus); the first call starts the client.
++void ap_overlay_draw(ImGuiIO &io, float scale, ImFont *game_font) {
 +    // region lock's fog (runtime/ap_region.c): a pale haze over the world, thicker below, white when it turns Link back
 +    float fog = ap_region_fog();
 +    if (fog > 0.004f) {
@@ -1950,29 +2197,22 @@ index 0000000..8abe01a
 +        bg->AddRectFilledMultiColor(ImVec2(0, 0), io.DisplaySize, top, top, low, low);
 +    }
 +    std::lock_guard<std::mutex> l(g_note_lock);
++    g_game_font = game_font;
 +    double t = now_s();
 +    while (!g_notes.empty() && t - g_notes.front().born > 7.3) g_notes.pop_front();
++    if (g_chat_open.load()) return chat_draw(io, scale);
 +    ImDrawList *dl = ImGui::GetForegroundDrawList();
-+    float h = 40 * scale, gap = 7 * scale, pad = 16 * scale;
++    float fs = 28 * scale, h = fs * 1.55f, gap = 6 * scale, pad = 14 * scale;
 +    float y = io.DisplaySize.y - io.DisplaySize.y * 0.14f - g_notes.size() * (h + gap);
 +    for (const Note &n : g_notes) {
 +        double age = t - n.born;
 +        float in = (float)fmin(1.0, age / 0.22), out = age > 7.0 ? (float)fmin(1.0, (age - 7.0) / 0.3) : 0.f;
-+        float w = 34 * scale + pad;
-+        for (const Seg &s : n.segs) w += ImGui::CalcTextSize(s.text.c_str()).x;
-+        float slide = 1 - (1 - in) * (1 - in) * (1 - in);
-+        float x = 24 * scale - w * (1 - slide) - w * out;
-+        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), IM_COL32(18, 18, 18, 225));
-+        dl->AddLine(ImVec2(x, y), ImVec2(x + w, y), IM_COL32(181, 154, 91, 255), scale);
-+        dl->AddLine(ImVec2(x, y + h - 1), ImVec2(x + w, y + h - 1), IM_COL32(181, 154, 91, 255), scale);
-+        dl->AddLine(ImVec2(x + 4 * scale, y + 3 * scale), ImVec2(x + 4 * scale, y + h - 3 * scale), IM_COL32(79, 211, 232, 255), 2 * scale);
-+        float cy = y + h / 2, cx = x + 18 * scale, r = 6 * scale;
-+        dl->AddQuadFilled(ImVec2(cx, cy - r), ImVec2(cx + r, cy), ImVec2(cx, cy + r), ImVec2(cx - r, cy), IM_COL32(79, 211, 232, 255));
-+        float tx = x + 34 * scale, ty = cy - ImGui::GetTextLineHeight() / 2;
-+        for (const Seg &s : n.segs) {
-+            dl->AddText(ImVec2(tx, ty), s.col, s.text.c_str());
-+            tx += ImGui::CalcTextSize(s.text.c_str()).x;
-+        }
++        float w = 30 * scale + pad + segs_width(n.segs, fs);
++        float slide = 1 - (1 - in) * (1 - in) * (1 - in), alpha = in * (1 - out);
++        float x = 24 * scale - 40 * scale * (1 - slide);
++        draw_band(dl, ImVec2(x, y), ImVec2(x + w, y + h), 60 * scale, alpha);
++        draw_mark(dl, x + pad + 4 * scale, y + h / 2, 5.5f * scale, alpha);
++        draw_segs(dl, ImVec2(x + pad + 18 * scale, y + (h - fs) / 2), fs, n.segs, alpha);
 +        y += h + gap;
 +    }
 +}
@@ -2100,7 +2340,7 @@ index 2ed8c2a..5b818c7 100644
      if (g_cap_row && bind_capture_active(&d, &s, &ms)) cap_slot_was = s;
      if (g_cap_row && !bind_capture_active(&d, &s, &ms)) {
 diff --git a/runtime/ui/menu.mm b/runtime/ui/menu.mm
-index 852ede0..2f5883f 100644
+index 852ede0..301c3a3 100644
 --- a/runtime/ui/menu.mm
 +++ b/runtime/ui/menu.mm
 @@ -167,7 +167,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
@@ -2112,17 +2352,87 @@ index 852ede0..2f5883f 100644
  static int g_kbd_max = 8;
  // Window size's list over the game's Options screen (game_options.mm A_SIZE_LIST): up, and until when the press that
  // closed it is kept from the game
-@@ -2184,6 +2184,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
+@@ -180,7 +180,10 @@ extern "C" void menu_size_list_open(void) {
+     input_reset();
+     g_sizes = true;
+ }
+-static bool capturing() { return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open(); }
++extern "C" bool ap_chat_is_open(void);  // runtime/ui/ap_client.mm: the Archipelago chat (Enter in the world)
++extern "C" void ap_chat_set_open(bool open);
++extern "C" bool ap_chat_can_open(void);
++static bool capturing() { return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || ap_chat_is_open(); }
+ // The game gets no input while this is true (runtime/hle/input.c): menu or name entry up, or a binding capture begun
+ // from the game's Options screen.
+ extern "C" bool menu_input_captured(void) {
+@@ -250,7 +253,7 @@ bool menu_handle_event(const SDL_Event *e) {
+         return true;
+     }
+     // typing (a text field, the on-screen keyboard, the name entry): keys are text, not menu shortcuts
+-    bool typing = g_kbd.load() == 1 || console_is_open() || (g_open.load() && g_text_busy.load());
++    bool typing = g_kbd.load() == 1 || console_is_open() || ap_chat_is_open() || (g_open.load() && g_text_busy.load());
+     if (e->type == SDL_EVENT_KEY_UP && e->key.scancode == SDL_SCANCODE_ESCAPE)
+         input_pc_escape(false);
+     if (pc_cursor_enabled() && !capturing() && !typing && !game_options_input_hold() &&
+@@ -269,6 +272,20 @@ bool menu_handle_event(const SDL_Event *e) {
+             set_console(!console_is_open());
+             return true;
+         }
++        // the Archipelago chat: Enter out in the world opens it (in menus and talk Enter stays the A button), Esc closes
++        if (!e->key.repeat && (e->key.scancode == SDL_SCANCODE_RETURN || e->key.scancode == SDL_SCANCODE_KP_ENTER) &&
++            !(e->key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) && !capturing() && !game_options_input_hold() && ap_chat_can_open()) {
++            ap_chat_set_open(true);
++            input_reset();  // nothing held leaks into the game
++            return true;
++        }
++        if (ap_chat_is_open()) {
++            if (e->key.scancode == SDL_SCANCODE_ESCAPE) { if (!e->key.repeat) ap_chat_set_open(false), input_reset(); return true; }
++            if (e->key.scancode == SDL_SCANCODE_V && (e->key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
++                if (!e->key.repeat) console_paste();
++                return true;
++            }
++        }
+         if (console_is_open()) {
+             if (e->key.scancode == SDL_SCANCODE_ESCAPE) { if (!e->key.repeat) set_console(false); return true; }
+             if (e->key.scancode == SDL_SCANCODE_V && (e->key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+@@ -400,7 +417,7 @@ void menu_apply_window_requests(void *win) {
+     g_pixel_density = SDL_GetWindowPixelDensity(w);
+     static bool text_input;
+     // (only while typing: text input brings up the Steam Deck's on-screen keyboard)
+-    bool want_text = g_kbd.load() == 1 || console_is_open() || (g_open.load() && g_text_busy.load());
++    bool want_text = g_kbd.load() == 1 || console_is_open() || ap_chat_is_open() || (g_open.load() && g_text_busy.load());
+     if (want_text != text_input) {
+         if (want_text) SDL_StartTextInput(w);
+         else SDL_StopTextInput(w);
+@@ -517,7 +534,7 @@ static void load_fonts(void) {
+     if (!g_font_big) g_font_big = g_font;
+     if (!g_menu_font || !g_menu_font_big) g_menu_font = g_font, g_menu_font_big = g_font_big;
+     g_hint_font = g_hint_buttons = nullptr;
+-    g_hint_font_attempted = g_romfs_dir && (g_settings.quick_sort || g_settings.quick_drop);
++    g_hint_font_attempted = g_romfs_dir && (g_settings.quick_sort || g_settings.quick_drop || g_settings.ap_server[0]);
+     if (g_hint_font_attempted) quick_hint_fonts_load(io.Fonts, &g_hint_font, &g_hint_buttons);
+     g_hint_generation = icons_generation;
+ }
+@@ -526,7 +543,8 @@ static void load_fonts(void) {
+ extern "C" void vk_imgui_fonts_changed(void);  // (runtime/nvn/vulkan/imgui_glue.cpp)
+ extern "C" const char *vk_hdr_icc_description(void);  // (runtime/nvn/vulkan/device.c)
+ static void fonts_follow_language(void) {
+-    bool need_hint_fonts = (g_settings.quick_sort || g_settings.quick_drop) && g_romfs_dir && !g_hint_font_attempted;
++    bool need_hint_fonts = (g_settings.quick_sort || g_settings.quick_drop || g_settings.ap_server[0]) && g_romfs_dir &&
++                           !g_hint_font_attempted;
+     bool icons_changed = (g_settings.quick_sort || g_settings.quick_drop) && g_hint_generation != glyphs_font_generation();
+     int current_fonts_gen = ui_lang_generation() * 10007 + ui_dynamic_generation();
+     if (g_fonts_lang == current_fonts_gen && !need_hint_fonts && !icons_changed) return;
+@@ -2184,6 +2202,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
  // Everything menu_render draws, in one place: menu_render_needed (the caller's cue to drain the recorder first) and
  // menu_render (which decides again, and drains itself) must agree on it. The pointer's hover box, the console and the
  // gyro drag were missing here: their frames went to the command buffer while the recorder thread was still filling it.
-+void ap_overlay_draw(ImGuiIO &io, float scale);  // runtime/ui/ap_client.mm
++void ap_overlay_draw(ImGuiIO &io, float scale, ImFont *game_font);  // runtime/ui/ap_client.mm
 +bool ap_overlay_active(void);
 +
  static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bool *gyro_show = NULL, GyroScene *gyro = NULL) {
      float box[4];
      GyroScene gs;
-@@ -2192,7 +2195,8 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+@@ -2192,7 +2213,8 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
      if (pointer_hover) *pointer_hover = hover;
      if (gyro_show) *gyro_show = gyro_on;
      return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || gyro_on || hover ||
@@ -2132,11 +2442,23 @@ index 852ede0..2f5883f 100644
  }
  
  bool menu_render_needed(void) { return menu_draws(); }
-@@ -2275,6 +2279,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
+@@ -2275,6 +2297,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
      }
  
      if (g_settings.perf_overlay != PERF_OFF) perf_overlay_draw(io, scale);
-+    ap_overlay_draw(io, scale);  // (Archipelago: runtime/ui/ap_client.mm; also starts its client)
++    ap_overlay_draw(io, scale, g_hint_font);  // (Archipelago: runtime/ui/ap_client.mm; also starts its client)
      if (act_log_enabled()) act_overlay_draw(io, scale);
      if (!open && !kbd && !sizes && !con && (quick_inventory_sort_hint() || quick_drop_hint_state())) quick_inventory_hint_draw(io);
      if (!open && !kbd && !sizes && !con) photo_overlay_draw(io, scale);
+diff --git a/runtime/ui/quick_hint_font.mm b/runtime/ui/quick_hint_font.mm
+index 350939b..1aa2cf9 100644
+--- a/runtime/ui/quick_hint_font.mm
++++ b/runtime/ui/quick_hint_font.mm
+@@ -146,6 +146,7 @@ void quick_hint_fonts_load(ImFontAtlas *atlas, ImFont **text, ImFont **buttons)
+     if (!archive) return;
+     std::vector<unsigned> chars;
+     for (unsigned c = 32; c < 127; c++) chars.push_back(c);
++    for (unsigned c = 0xa1; c <= 0xff; c++) chars.push_back(c);  // (accented letters: Archipelago's names, runtime/ui/ap_client.mm)
+     for (const char *label : {tr("Sort"), tr("Drop"), tr("Back")}) {
+         while (*label) {
+             unsigned code; int n = ImTextCharFromUtf8(&code, label, nullptr);

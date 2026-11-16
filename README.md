@@ -38,11 +38,16 @@ sets everything up for you.
 ## Features
 
 ### Native item delivery
-Received items play the game's own item-get scene the moment they arrive: in the field, in shrines, in Divine Beasts.
-Heart Containers and Stamina Vessels play their gauge scenes. Every check gives the **Archipelago Item** instead of
+Progression items play the game's own item-get scene the moment they arrive: in the field, in shrines, in Divine
+Beasts. Heart Containers play their gauge scene. Filler and useful items arrive quietly, told in the chat box. Every check gives the **Archipelago Item** instead of
 its normal reward, and it leaves the pouch on its own right after.
 
 <img src="docs/images/item-scenes.jpg" alt="Link in the field, then the Paraglider arriving with its item-get scene" width="100%">
+
+### Chat
+What the room says shows at the bottom left, in the game's own font: your items, your friends' checks, chat, hints.
+Press **Enter** out in the world to open the chat: scroll the log with the mouse wheel or PgUp / PgDn, type to
+talk to everyone, or ask for a hint with `!hint <item>`. **Esc** closes it.
 
 ### The multiworld in your Adventure Log
 Two quests of the game's own start once you connect, at **Multiworld: _your slot_**. **Archipelago Goal** (Main
@@ -74,7 +79,7 @@ of it, like the Lost Woods.
 <img src="docs/images/region-lock.jpg" alt="Link walks into a locked region, fog rises, it whites out, and he is back outside" width="100%">
 
 ### Traps that change Hyrule
-Filler and traps are announced by the game's own banner. A **Fog** or **Darkness Trap** changes all of Hyrule's
+Traps are announced by the game's own banner. A **Fog** or **Darkness Trap** changes all of Hyrule's
 light for two minutes; **Heat** and **Cold** make the air scorching or freezing for one (dress for it); a
 **Fire Trap** sets the air itself alight. Then there's weather (Thunderstorm, Blizzard, Downpour, Midnight), the
 game's own bans (No Warping, No Saving, Hunger), Ouch, Rupee Drain and Warp.
@@ -94,7 +99,7 @@ Shield Slots, the minigame prizes, horse gear and more.
 
 <img src="docs/images/helm.jpg" alt="The Thunder Helm and a bridle arriving" width="100%">
 
-**Also:** DeathLink, TrapLink, RingLink, in-game notifications at the bottom left, and "ARCHIPELAGO" under the logo
+**Also:** DeathLink, TrapLink, RingLink, and "ARCHIPELAGO" under the logo
 on the title and loading screens.
 
 ---
@@ -183,7 +188,7 @@ map icons) is read from your own dump when it opens.
 2. Start a **new game**.
 3. **Options &rsaquo; Archipelago** (title screen, or pause menu &rsaquo; System &rsaquo; Options): enter the server,
    slot name and password, turn on the links you want, and press **Connect**.
-4. Play. Checks go out the moment they happen; items arrive with their scenes.
+4. Play. Checks go out the moment they happen; items arrive with their scenes. **Enter** opens the chat.
 
 The full guide is in [`worlds/botw/docs/setup_en.md`](worlds/botw/docs/setup_en.md).
 

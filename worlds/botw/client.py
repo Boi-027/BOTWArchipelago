@@ -123,18 +123,21 @@ class BotWContext(CommonContext):
             return
         item, to = args["item"], args["receiving"]
         sender = item.player
-        if self.slot not in (to, sender):
-            return
         kind = "trap" if item.flags & 0b100 else "progression" if item.flags & 0b001 else \
             "useful" if item.flags & 0b010 else "filler"
         name = (self.item_names.lookup_in_slot(item.item, to), kind)
-        if to == sender:
+        loc = ("  ·  " + self.location_names.lookup_in_slot(item.location, sender), "location")
+        who = lambda slot: (self.player_names.get(slot, "?"), "player")
+        if to == sender == self.slot:
             self.overlay.notify("Found your ", name)
         elif to == self.slot:
-            self.overlay.notify("Received ", name, " from ", (self.player_names.get(sender, "?"), "player"))
+            self.overlay.notify("Received ", name, " from ", who(sender))
+        elif sender == self.slot:
+            self.overlay.notify("Sent ", name, " to ", who(to), loc)
+        elif to == sender:  # (the others' checks too)
+            self.overlay.notify(who(sender), " found their ", name, loc)
         else:
-            self.overlay.notify("Sent ", name, " to ", (self.player_names.get(to, "?"), "player"),
-                                ("  ·  " + self.location_names.lookup_in_slot(item.location, sender), "location"))
+            self.overlay.notify(who(sender), " sent ", name, " to ", who(to), loc)
 
     # ---- Options > Archipelago in the game, and the links
     async def set_status(self, text: str):

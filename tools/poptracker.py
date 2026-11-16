@@ -1,9 +1,11 @@
 """A PopTracker pack for Breath of the Wild Archipelago (Savage Wind), made from your own game files - for your machine
 only, it holds the game's map and icons:
   - the Hyrule map (UI/MapTex/MainField, the game's own map tiles) with the regions drawn on it, every check where it is
-    (a shrine's chests and terminal with the shrine; nearby checks of one kind and place on one pin)
-  - the Regions panel: Hyrule's 15 tower regions as shapes, each with the checks that have no one place (quests,
-    Divine Beasts...), and the region maps in the item grid laid out like Hyrule
+    (a shrine's chests and terminal with the shrine; nearby checks of one kind and place on one pin; quests where
+    whoever gives them stands, memories, minigames, Hestu, a Divine Beast and its chests where it waits)
+  - the Regions tab: Hyrule's 15 tower regions as shapes, with the few checks that have no one place (traveling
+    merchants...), and the Regions panel: Hyrule in pieces, each in colour once its map is found; click one and the
+    Hyrule map zooms onto it (again: all of Hyrule), right-click: its map found or not
   - the logic of worlds/botw (runes, paraglider, Hestu's seeds, the Master Sword's trials, region lock), and
     Archipelago autotracking: items, checked locations and the slot's options (what isn't on is hidden)
 
@@ -268,21 +270,41 @@ OPTION_ART = {"koroks": ("icon", "Obj_KorokNuts"), "chests": ("glyph", "Nt_Stamp
               "region_lock": ("icon", "KeySmall")}
 
 
-def map_icon(base, raster, r, colour):
-    """a region's map: the game's map of it, cut to its shape, its colour round the edge, in a slot"""
-    full = raster.point(lambda v: 255 if v == r else 0)
-    box = full.getbbox()
-    mask, part = full.crop(box), base.crop(box).convert("RGBA")
-    k = 52 / max(mask.size)
-    size = (max(1, int(mask.width * k)), max(1, int(mask.height * k)))
-    mask, part = mask.resize(size, Image.LANCZOS), part.resize(size, Image.LANCZOS)
-    rim = Image.new("RGBA", size, colour + (255,))
-    rim.putalpha(mask.filter(ImageFilter.MaxFilter(5)))
-    part.putalpha(mask)
-    shape = Image.new("RGBA", size, (0, 0, 0, 0))
-    shape.alpha_composite(rim)
-    shape.alpha_composite(part)
-    return slot(shape, fill=0.86)
+PANEL_W, PANEL_H = 290, 232  # (the Regions panel: Hyrule's 10 x 8, in the item column's width)
+
+
+def region_pieces(base, raster):
+    """the Regions panel as Hyrule: each region the game's map cut to its shape where it lies, (r, found picture,
+    locked picture, left, top, width, height). Found: in colour, a green rim; locked: dark gray, a pale rim"""
+    w, h = PANEL_W * 2, PANEL_H * 2  # (drawn at twice the size: sharp when PopTracker scales it)
+    small_r = raster.resize((w, h), Image.NEAREST)
+    colour = base.resize((w, h), Image.LANCZOS).convert("RGBA")
+    gray = locked_look(colour)
+    out = []
+    for r in range(len(NAMES)):
+        full = small_r.point(lambda v: 255 if v == r else 0)
+        box = full.getbbox()
+        if not box:
+            continue
+        box = (max(0, box[0] - 2), max(0, box[1] - 2), min(w, box[2] + 2), min(h, box[3] + 2))
+        mask = full.crop(box)
+        rim = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(5)))
+        pics = []
+        for src, edge in ((colour, (150, 235, 120, 255)), (gray, (200, 205, 210, 255))):
+            pic = src.crop(box)
+            pic.putalpha(mask)
+            line = Image.new("RGBA", pic.size, edge)
+            line.putalpha(rim)
+            pic.alpha_composite(line)
+            pics.append(pic)
+        out.append((r, pics[0], pics[1], box[0] // 2, box[1] // 2, (box[2] - box[0]) // 2, (box[3] - box[1]) // 2))
+    return out
+
+
+def locked_look(img):
+    """a locked region's look: the map gone dark gray"""
+    g = img.convert("L").point(lambda v: int(30 + v * 0.35))
+    return Image.merge("RGBA", (g, g, g, img.split()[3]))
 
 
 # ---- the logic, as worlds/botw/__init__.py has it
@@ -371,6 +393,40 @@ function botw(id)
   return true
 end
 function region_reachable(i) return regions_open()[tonumber(i)] == true end
+"""
+
+REGIONS_PANEL = r"""-- the Regions panel (tools/poptracker.py writes this pack): each region's piece of Hyrule, in colour once its map is
+-- found. Click: the Hyrule map zooms onto it (again: back to all of Hyrule). Right-click: its map found or not, by hand
+local zoomed = nil
+local function piece(r, view)
+  local code, map = string.format("region_%02d", r), string.format("map_%02d", r)
+  local found = ImageReference:FromPackRelativePath(string.format("images/items/map_%02d.png", r))
+  local locked = ImageReference:FromPackRelativePath(string.format("images/items/map_%02d_locked.png", r))
+  local it = ScriptHost:CreateLuaItem()
+  it.Name = view.name
+  local function show() it.Icon = (r == PLATEAU or has(map)) and found or locked end
+  it.CanProvideCodeFunc = function(self, c) return c == code end
+  it.ProvidesCodeFunc = function(self, c) return 0 end
+  it.OnLeftClickFunc = function(self)
+    Tracker:UiHint("ActivateTab", "Hyrule")
+    if zoomed == r then
+      zoomed = nil
+      Tracker:UiHint("Zoom Hyrule", "1")
+      Tracker:UiHint("Pan Hyrule", HOME)
+    else
+      zoomed = r
+      Tracker:UiHint("Zoom Hyrule", view.zoom)
+      Tracker:UiHint("Pan Hyrule", view.pan)
+    end
+  end
+  it.OnRightClickFunc = function(self)
+    local o = Tracker:FindObjectForCode(map)
+    if o then o.Active = not o.Active end
+  end
+  show()
+  if r ~= PLATEAU then ScriptHost:AddWatchForCode(code, map, show) end
+end
+for r, view in pairs(REGION_VIEWS) do piece(r, view) end
 """
 
 AUTOTRACKING = r"""-- Archipelago autotracking (tools/poptracker.py writes this pack): items, checked locations, the slot's options
@@ -481,6 +537,12 @@ def main(ex, out_dir):
     ids = item_ids()
     items, mapping = [], {}
     tex = hud_textures(romfs)
+    pieces = region_pieces(base, big_r)
+    for r, found, locked, *_ in pieces:
+        found.save(os.path.join(pack, "images", "items", f"map_{r:02d}.png"))
+        locked.save(os.path.join(pack, "images", "items", f"map_{r:02d}_locked.png"))
+    items.append({"name": NAMES[PLATEAU], "type": "static", "img": f"images/items/map_{PLATEAU:02d}.png",
+                  "codes": f"map_{PLATEAU:02d}"})  # (no map: Link starts there)
     for name, (code, kind, n, actor) in ITEMS.items():
         if name not in ids:
             continue
@@ -495,9 +557,11 @@ def main(ex, out_dir):
         elif actor:
             pic = icon(romfs, overlay, actor)
             pic = slot(pic, GLOWS.get(code)) if pic else slot(Image.new("RGBA", (8, 8)))
-        else:
-            r = int(code[-2:])
-            pic = map_icon(base, big_r, r, REGION_COLOURS[r])
+        else:  # (a region's map: its piece of the Regions panel, drawn above)
+            items.append({"name": name, "type": "toggle", "img": img, "disabled_img": img.replace(".png", "_locked.png"),
+                          "codes": code})
+            mapping[ids[name]] = code
+            continue
         pic.save(os.path.join(pack, img))
         if kind == "toggle":
             items.append({"name": name, "type": "toggle", "img": img, "codes": code})
@@ -530,6 +594,8 @@ def main(ex, out_dir):
 
     # the locations: pins on the Hyrule map, and the Regions panel's
     def where(l):
+        if l.get("spot"):  # (no place of its own, or a Divine Beast's: where the tracker shows it, tools/extract.py)
+            return l["spot_at"], l["spot"]
         if l["category"] in ("Shrine Chest", "Rune Terminal"):
             base = l["name"].split(" Chest")[0].replace(" Terminal", "")
             return base, shrine_pos.get(base)
@@ -546,7 +612,8 @@ def main(ex, out_dir):
     for (mp, pin), members in sorted(pins.items()):
         sections = []
         for l, _ in members:
-            sec = l["name"][len(pin):].strip(" -") or l["category"] if mp == "Hyrule" else l["name"]
+            own = l["name"].startswith(pin)  # (a pin named for its place holds checks of every name)
+            sec = (l["name"][len(pin):].strip(" -") if own else l["name"]) or l["category"] if mp == "Hyrule" else l["name"]
             if mp == "Hyrule" and l["category"] in ("Shrine Chest", "Rune Terminal"):
                 sec = l["name"][len(pin):].strip() or l["category"]
             names = {s["name"] for s in sections}
@@ -580,20 +647,26 @@ def main(ex, out_dir):
         f.write("ITEM_MAPPING = {\n" + "".join(f"  [{i}]=\"{c}\",\n" for i, c in mapping.items()) + "}\n")
         f.write("LOCATION_MAPPING = {\n" + "".join(f"  [{i}]={json.dumps(p, ensure_ascii=False)},\n" for i, p in loc_map.items()) + "}\n")
     open(os.path.join(pack, "scripts", "autotracking.lua"), "w").write(AUTOTRACKING)
+    # the Regions panel's pieces: where the Hyrule map goes when one is clicked (its middle, a zoom that fits it)
+    mw, mh = big.size
+    k = mw / PANEL_W
+    views = ",\n".join(
+        f'  [{r}]={{name={json.dumps(NAMES[r])}, pan="{int((x + w / 2) * k)},{int((y + h / 2) * k)}", '
+        f'zoom="{min(mw / (w * k), mh / (h * k)) * 0.85:.2f}"}}' for r, _, _, x, y, w, h in pieces)
+    open(os.path.join(pack, "scripts", "regions.lua"), "w").write(
+        f'REGION_VIEWS = {{\n{views}\n}}\nHOME = "{mw // 2},{mh // 2}"\n{REGIONS_PANEL}')
     open(os.path.join(pack, "scripts", "init.lua"), "w").write(
         'Tracker:AddItems("items/items.json")\nScriptHost:LoadScript("scripts/logic.lua")\n'
         'Tracker:AddMaps("maps/maps.json")\nTracker:AddLocations("locations/locations.json")\n'
-        'Tracker:AddLayouts("layouts/tracker.json")\n'
+        'ScriptHost:LoadScript("scripts/regions.lua")\nTracker:AddLayouts("layouts/tracker.json")\n'
         'if PopVersion and PopVersion >= "0.18.0" then ScriptHost:LoadScript("scripts/autotracking.lua") end\n')
 
-    # the layout: items on the left (the region maps laid out like Hyrule), the two maps in tabs
-    cells = {}
-    for r, (x, y) in centroids(tiny, 1, 1).items():
-        if r == PLATEAU:
-            continue
-        free = [(c, rr) for c in range(5) for rr in range(4) if (c, rr) not in cells]  # (the nearest free cell)
-        cells[min(free, key=lambda cr: (cr[0] - x * 4) ** 2 + (cr[1] - y * 3) ** 2)] = f"map_{r:02d}"
-    map_rows = [[cells.get((c, r), "") for c in range(5)] for r in range(4)]
+    # the layout: items on the left (the Regions panel: Hyrule in pieces, each region where it lies), the two maps in
+    # tabs. Big pieces first: a small one drawn later stays clickable over a big one's corner
+    regions = {"type": "group", "header": "Regions", "content": {
+        "type": "canvas", "width": PANEL_W, "height": PANEL_H, "content": [
+            {"type": "item", "item": f"region_{r:02d}", "canvas_left": x, "canvas_top": y, "width": w, "height": h}
+            for r, _, _, x, y, w, h in sorted(pieces, key=lambda p: -p[5] * p[6])]}}
     main_rows = [["paraglider", "remote_bomb", "magnesis", "stasis", "cryonis"],
                  ["mipha", "daruk", "revali", "urbosa", "sensor"],
                  ["master_sword", "heart", "stamina", "spirit_orb", "korok"],
@@ -602,18 +675,18 @@ def main(ex, out_dir):
     group = lambda title, rows, size: {"type": "group", "header": title, "content": {
         "type": "itemgrid", "item_margin": "4,4", "item_size": size, "rows": rows}}
     left = {"type": "array", "orientation": "vertical", "content": [
-        group("Items", main_rows, 50), group("Regions", map_rows, 50), group("Options", option_rows, 40)]}
+        group("Items", main_rows, 50), regions, group("Options", option_rows, 40)]}
     layout = {
         "tracker_default": {"type": "container", "background": "#14171b", "content": {"type": "dock", "content": [
             {"type": "dock", "dock": "left", "v_alignment": "stretch", "content": left},
             {"type": "tabbed", "tabs": [{"title": "Hyrule", "content": {"type": "map", "maps": ["Hyrule"]}},
                                         {"title": "Regions", "content": {"type": "map", "maps": ["Regions"]}}]}]}},
         "tracker_broadcast": {"type": "array", "orientation": "vertical", "content": [
-            group("Items", main_rows, 50), group("Regions", map_rows, 50)]},
+            group("Items", main_rows, 50), regions]},
     }
     json.dump(layout, open(os.path.join(pack, "layouts", "tracker.json"), "w"), indent=1)
     json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild",
-               "package_uid": "botw_ap_savagewind", "package_version": "0.3.0", "platform": "switch",
+               "package_uid": "botw_ap_savagewind", "package_version": "0.4.0", "platform": "switch",
                "variants": {"standard": {"display_name": "Map Tracker", "flags": ["ap"]}}},
               open(os.path.join(pack, "manifest.json"), "w"), indent=1)
     z = os.path.join(out_dir, "BotW_AP.zip")

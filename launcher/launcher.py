@@ -1,7 +1,8 @@
-"""Breath of the Wild x Archipelago - the launcher. Point it at a normal Savage Wind 0.5.3-alpha.5 folder (with your
-game files set up by Savage Wind) and it does the rest: puts the Archipelago build of Savage Wind in place (the stock
-exe is kept), builds the overlay from your own game files, turns it on, installs the apworld into Archipelago and,
-if you like, a PopTracker pack - then fills in your server and slot and starts the game.
+"""Breath of the Wild x Archipelago - the launcher. Point it at a normal Savage Wind folder (with your game files set up
+by Savage Wind) and it does the rest: puts the Archipelago build of Savage Wind in place (the stock exe is kept),
+builds the overlay from your own game files, turns it on, installs the apworld into Archipelago and, if you like, a
+PopTracker pack - then fills in your server and slot and starts the game. Savage Wind updates go through it too: its
+own updater, then the Archipelago build of the new version (from this project's releases).
 
 Run from source:  botw_ap/.venv/Scripts/python launcher/launcher.py
 Build the .exe:   botw_ap/.venv/Scripts/python launcher/build_launcher.py
@@ -13,12 +14,15 @@ import json
 import os
 import runpy
 import shutil
+import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
 
-VERSION = "0.3.0"
-SW_VERSION = "0.5.3-alpha.5"
-STOCK_EXE_SHA = "d40806507ee635203740d9b62896d7989d9388db2bdc802f8d546967dc162749"  # (Savage Wind 0.5.3-alpha.5's)
+VERSION = "0.4.0"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
+RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 
 # where the bundled files are: next to this script (from source) or unpacked by PyInstaller
 if getattr(sys, "frozen", False):
@@ -29,6 +33,7 @@ TOOLS = os.path.join(BASE, "tools")
 PAYLOAD = os.path.join(BASE, "launcher", "payload") if not getattr(sys, "frozen", False) else os.path.join(BASE, "payload")
 CONFIG = os.environ.get("BOTW_AP_LAUNCHER_CONFIG") or \
     os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "BotW AP Launcher", "config.json")
+BUILDS = os.path.join(os.path.dirname(CONFIG), "builds")  # (the Archipelago builds fetched for other versions)
 
 # ---- colours: dusk over Hyrule, Sheikah blue, Archipelago gold
 BG, PANEL, PANEL2, LINE = "#121519", "#1a1f26", "#222a33", "#2e3742"
@@ -56,15 +61,146 @@ def manifest_version(sw):
     return None
 
 
-def patched_exe():
-    return os.path.join(PAYLOAD, "savagewind.exe")
+def manifest_sha(sw, name):
+    """the stock file's sha256, as the version's own sw-manifest.txt lists it ("f <sha256> <size> <name>")"""
+    try:
+        for line in open(os.path.join(sw, "sw-manifest.txt"), encoding="utf8"):
+            parts = line.rstrip("\n").split(" ", 3)
+            if len(parts) == 4 and parts[0] == "f" and parts[3] == name:
+                return parts[1]
+    except OSError:
+        pass
+    return ""
 
 
-def patched_sha():
-    p = os.path.join(PAYLOAD, "savagewind.exe.sha256")
-    if os.path.exists(p):
-        return open(p).read().strip()
-    return sha256(patched_exe()) if os.path.exists(patched_exe()) else ""
+# ---- the Archipelago build of savagewind.exe: one for each Savage Wind version - the one in the payload (its version in
+# savagewind.exe.version), or fetched from this project's releases (savagewind-ap-<version>.exe and its .sha256)
+def bundled_version():
+    p = os.path.join(PAYLOAD, "savagewind.exe.version")
+    return open(p).read().strip() if os.path.exists(p) else ""
+
+
+def ap_build(ver):
+    """(exe, sha256) of the Archipelago build for Savage Wind <ver> here, or (None, "")"""
+    if ver and ver == bundled_version():
+        p = os.path.join(PAYLOAD, "savagewind.exe")
+        s = os.path.join(PAYLOAD, "savagewind.exe.sha256")
+        return p, (open(s).read().strip() if os.path.exists(s) else sha256(p))
+    p = os.path.join(BUILDS, ver or "-", "savagewind.exe")
+    s = p + ".sha256"
+    if os.path.exists(p) and os.path.exists(s) and sha256(p) == open(s).read().strip():
+        return p, open(s).read().strip()
+    return None, ""
+
+
+def _get(url, accept="application/vnd.github+json"):
+    req = urllib.request.Request(url, headers={"User-Agent": "BotW-AP-Launcher", "Accept": accept})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.read()
+
+
+def fetch_ap_build(ver, log):
+    """the Archipelago build for Savage Wind <ver> from this project's releases, checked; False: there is none (yet)"""
+    if ap_build(ver)[0]:
+        return True
+    name = f"savagewind-ap-{ver}.exe"
+    try:
+        releases = json.loads(_get(RELEASES_API))
+    except OSError as e:
+        log(f"Can't reach GitHub for the Archipelago build ({e})")
+        return False
+    assets = {a["name"]: a for r in releases for a in r.get("assets", [])}
+    if name not in assets or name + ".sha256" not in assets:
+        log(f"No Archipelago build for Savage Wind {ver} yet.")
+        return False
+    log(f"Downloading the Archipelago build for Savage Wind {ver}")
+    want = _get(assets[name + ".sha256"]["url"], "application/octet-stream").decode().split()[0].strip()
+    data = _get(assets[name]["url"], "application/octet-stream")
+    if hashlib.sha256(data).hexdigest() != want:
+        log("The download didn't match its checksum: not used.")
+        return False
+    d = os.path.join(BUILDS, ver)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "savagewind.exe"), "wb") as f:
+        f.write(data)
+    with open(os.path.join(d, "savagewind.exe.sha256"), "w") as f:
+        f.write(want)
+    return True
+
+
+# ---- Savage Wind's own updater ("SW Update.exe", in its folder): --check asks GitHub, --apply installs the newest
+# release (checked, signed, undone if it fails) and opens Savage Wind Configuration, which builds the new game code
+def sw_update_check(sw):
+    """{"status": current / available / error, "current", "version" (the newest), ...} or {} (no updater)"""
+    up = os.path.join(sw, "SW Update.exe")
+    if not os.path.exists(up):
+        return {}
+    out = os.path.join(tempfile.gettempdir(), "botw_ap_sw_check.txt")
+    try:
+        subprocess.run([up, "--check", "--out", out], cwd=sw, timeout=60, creationflags=0x08000000)
+        res = dict(line.rstrip("\n").split("=", 1) for line in open(out, encoding="utf8") if "=" in line)
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    return res
+
+
+def _sw_running(sw):
+    """Savage Wind's own programs from this folder still running (the game, its Configuration, the updater) - only
+    those: the launcher itself may be kept in the folder too"""
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "Get-Process | Where-Object { $_.Path } | ForEach-Object { $_.Path }"],
+                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    own = {os.path.normcase(os.path.join(os.path.abspath(sw), n))
+           for n in ("savagewind.exe", "Savage Wind Configuration.exe", "SW Update.exe")}
+    return any(os.path.normcase(p.strip()) in own for p in out.splitlines() if p.strip())
+
+
+def inside_sw(sw):
+    """this launcher runs from inside the Savage Wind folder: its updater won't update while anything from there runs"""
+    here = os.path.normcase(os.path.abspath(sys.executable))
+    return here.startswith(os.path.normcase(os.path.abspath(sw)) + os.sep)
+
+
+def update_sw(cfg, log, step=lambda key, f: None, finish=True):
+    """Savage Wind to its newest release and the Archipelago build of it in place - only when that build exists, so
+    the game is never left on a version without one (finish=False: the update alone, Set up after)"""
+    sw = cfg["sw"]
+    if _sw_running(sw):
+        raise RuntimeError("Close Savage Wind first.")
+    if inside_sw(sw):
+        raise RuntimeError("Savage Wind's updater won't run while the launcher runs from inside its folder: start the "
+                           "launcher from somewhere else.")
+    chk = sw_update_check(sw)
+    new = chk.get("version", "")
+    if chk.get("status") != "available" or not new:
+        log(f"Savage Wind {manifest_version(sw)} is the newest.")
+        return False
+    step("sw", 0.1)
+    if not fetch_ap_build(new, log):
+        raise RuntimeError(f"Savage Wind {new} is out, but its Archipelago build isn't yet: Savage Wind is left as it "
+                           f"is. Try again later ({REPO}/releases).")
+    step("sw", 0.3)
+    log(f"Updating Savage Wind to {new} (its own updater)")
+    keep = os.path.join(sw, "savagewind.stock.exe")
+    if os.path.exists(keep):  # (the stock exe back first: the updater sees its own files)
+        shutil.copy2(keep, os.path.join(sw, "savagewind.exe"))
+    subprocess.run([os.path.join(sw, "SW Update.exe"), "--apply"], cwd=sw)
+    log("Savage Wind is setting itself up (its window): the launcher goes on once it's closed")
+    time.sleep(3)
+    while _sw_running(sw):  # (Configuration builds the new game code)
+        time.sleep(2)
+    if manifest_version(sw) != new:
+        raise RuntimeError(f"Savage Wind wasn't updated (still {manifest_version(sw)}): see SW Update.log in its folder.")
+    if os.path.exists(keep):
+        os.remove(keep)  # (the old version's: the new stock exe is kept on Set up)
+    step("sw", 1)
+    log(f"Savage Wind {new} is in." + (" Now its Archipelago build:" if finish else ""))
+    if finish:
+        setup(cfg, log, step)
+    return True
 
 
 def overlay_dir(sw):
@@ -76,7 +212,9 @@ def overlay_stamp(sw):
 
 
 def flag_line(sw):
-    return "SAVAGEWIND_ROMFS_OVERLAY=" + overlay_dir(sw)
+    # (relative: Savage Wind runs in its folder; a launch option's value is at most 127 characters - a longer one is
+    # dropped without a word - and the folder can move)
+    return "SAVAGEWIND_ROMFS_OVERLAY=ap_overlay"
 
 
 def read_flags(sw):
@@ -111,8 +249,8 @@ def status(cfg):
         out["sw"] = ("bad", "Choose your Savage Wind folder (the one with savagewind.exe).")
         return out
     ver = manifest_version(sw)
-    if ver != SW_VERSION:
-        out["sw"] = ("bad", f"This launcher needs Savage Wind {SW_VERSION} (found {ver or 'an unknown version'}).")
+    if not ver:
+        out["sw"] = ("bad", "This isn't a Savage Wind release folder (no sw-manifest.txt).")
         return out
     romfs = os.path.join(sw, "extracted", "romfs")
     if not os.path.isdir(romfs):
@@ -123,9 +261,12 @@ def status(cfg):
         return out
     out["sw"] = ("ok", f"Savage Wind {ver}, game files ready.")
     exe = sha256(os.path.join(sw, "savagewind.exe"))
-    if exe == patched_sha():
+    build, build_sha = ap_build(ver)
+    if build and exe == build_sha:
         out["exe"] = ("ok", "Installed. Your original is kept as savagewind.stock.exe.")
-    elif exe == STOCK_EXE_SHA:
+    elif not build:
+        out["exe"] = ("todo", f"The Archipelago build for Savage Wind {ver} is downloaded on Set up.")
+    elif exe == manifest_sha(sw, "savagewind.exe"):
         out["exe"] = ("todo", "Stock Savage Wind: the Archipelago build goes in on Set up.")
     else:
         out["exe"] = ("todo", "Another savagewind.exe: kept, the Archipelago build goes in.")
@@ -194,11 +335,15 @@ def setup(cfg, log, step=lambda key, f: None):
         raise RuntimeError(st["sw"][1])
     if st["exe"][0] != "ok":
         step("exe", 0.2)
+        ver = manifest_version(sw)
+        if not fetch_ap_build(ver, log):
+            raise RuntimeError(f"There's no Archipelago build for Savage Wind {ver} yet: it comes a while after each "
+                               f"Savage Wind release ({REPO}/releases).")
         log("Putting the Archipelago build of Savage Wind in place")
         exe, keep = os.path.join(sw, "savagewind.exe"), os.path.join(sw, "savagewind.stock.exe")
         if not os.path.exists(keep):
             shutil.copy2(exe, keep)
-        shutil.copy2(patched_exe(), exe)
+        shutil.copy2(ap_build(ver)[0], exe)
     step("exe", 1)
     if st["overlay"][0] != "ok":
         log("Building the overlay from your game files")
@@ -270,4 +415,6 @@ if __name__ == "__main__":
     app = App()
     if "--setup" in sys.argv:  # (Set up pressed as soon as the window is up: unattended installs)
         app.after(1000, app.do_setup)
+    if "--update" in sys.argv:  # (Update Savage Wind: a copy from outside its folder, started by do_update)
+        app.after(1500, lambda: (app.show("ruta"), app.do_update()))
     app.mainloop()

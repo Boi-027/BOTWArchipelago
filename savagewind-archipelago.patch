@@ -1,16 +1,3 @@
-diff --git a/Makefile b/Makefile
-index 1b519d1..6738d36 100644
---- a/Makefile
-+++ b/Makefile
-@@ -115,7 +115,7 @@ GENFLAGS += -D_FILE_OFFSET_BITS=64 $(GENARCH)
- # --stack: every thread's default stack, reserved (committed as it grows): 256 MB, the guest threads' recursion runs on
- # it (runtime/kernel.c thread_start)
- LDFLAGS  := -fuse-ld=lld -Wl,--stack,268435456 $(if $(DEPS),-L$(DEPS)/lib) -lSDL3 -lavformat -lavcodec -lavutil -lswscale \
--            -lvulkan-1 -lwinmm -lole32 -lshell32 -lcomdlg32 -luuid -lshaderc_shared -lpdh -lws2_32 -l:libz.a \
-+            -lvulkan-1 -lwinmm -lole32 -lshell32 -lcomdlg32 -luuid -lshaderc_shared -lpdh -lws2_32 -lwinhttp -l:libz.a \
-             $(if $(RELEASE),-Wl$(comma)--subsystem$(comma)windows)  # release: no console window (log -> savagewind.log)
- # NVIDIA DLSS is an optional external SDK. Keep proprietary files out of this
- # repository; source builds can point at the sibling checkout with DLSS_SDK=../DLSS.
 diff --git a/runtime/ap_event.c b/runtime/ap_event.c
 new file mode 100644
 index 0000000..abb926e
@@ -574,10 +561,10 @@ index 4462ab5..a82af17 100644
      float o, n;
 diff --git a/runtime/control_ap.c b/runtime/control_ap.c
 new file mode 100644
-index 0000000..99af5e8
+index 0000000..7b9be37
 --- /dev/null
 +++ b/runtime/control_ap.c
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,147 @@
 +// Archipelago: what Options > Archipelago (runtime/ui/game_options.mm) asks for, for the multiworld client (botw_ap)
 +// that polls this console. The client does the networking; the game keeps the settings (savagewind.ini ap_*), counts
 +// the Connect presses and shows the status the client sends back.
@@ -632,6 +619,10 @@ index 0000000..99af5e8
 +    control_field_bool(r, "traplink", g_settings.ap_traplink);
 +    control_field_bool(r, "ringlink", g_settings.ap_ringlink);
 +    control_field_int(r, "connects", g_connects);
++    extern void ap_client_state(char *buf, size_t n);  // runtime/ui/ap_client.mm
++    char state[256];
++    ap_client_state(state, sizeof state);
++    control_field_str(r, "client", state);
 +}
 +
 +void ap_set_status(const char *text) {
@@ -722,10 +713,10 @@ index 0000000..99af5e8
 +    if (dev) control_register(devc, 5);
 +}
 diff --git a/runtime/control_game.c b/runtime/control_game.c
-index 55c58cc..88fc4df 100644
+index 2123f0f..31cb8b7 100644
 --- a/runtime/control_game.c
 +++ b/runtime/control_game.c
-@@ -438,6 +438,7 @@ void control_fly_init(void);       // runtime/control_fly.c
+@@ -465,6 +465,7 @@ void control_fly_init(void);       // runtime/control_fly.c
  void rupees_control_init(void);    // runtime/rupees.c (cheat)
  void weather_control_init(void);   // runtime/weather.c (cheat)
  void control_items_init(void);     // runtime/items.c
@@ -733,7 +724,7 @@ index 55c58cc..88fc4df 100644
  
  void control_game_init(void) {
      static const ControlCmd player[] = {
-@@ -449,6 +450,7 @@ void control_game_init(void) {
+@@ -476,6 +477,7 @@ void control_game_init(void) {
      };
      control_register(player, (int)(sizeof player / sizeof *player));
      control_settings_init();  // (get for everyone, set only in developer mode)
@@ -743,10 +734,10 @@ index 55c58cc..88fc4df 100644
          {"time", "[freeze | unfreeze | set <0-24> | <0-24>]", "Show or change the hour of the day", cmd_time, 0},
 diff --git a/runtime/gdt_flags.c b/runtime/gdt_flags.c
 new file mode 100644
-index 0000000..3df596f
+index 0000000..5d68a46
 --- /dev/null
 +++ b/runtime/gdt_flags.c
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,164 @@
 +// Game data flags by the crc32 of their name, read and written in place, for the Archipelago client
 +// (runtime/ui/ap_client.mm): checks are flags going on, Heart Containers and the like are flags it raises.
 +//
@@ -835,10 +826,11 @@ index 0000000..3df596f
 +    return true;
 +}
 +
++// (no memory query per flag: the client reads thousands a second, and on Windows each VirtualQuery over the guest
++// reservation holds up the renderer's write-watch query - connected, the game fell under 1 fps. The objects are in
++// the guest window, where a page that isn't committed is committed when touched: platform/windows.c lazy_commit)
 +static bool still(const Ent *x) {
-+    uint64_t a, e;
-+    return plat_committed_range(x->obj, x->obj + 0x18, &a, &e) && a <= x->obj && rd64(x->obj) == g_vt[x->type] &&
-+           rd32(x->obj + HASH_AT[x->type]) == x->hash;
++    return rd64(x->obj) == g_vt[x->type] && rd32(x->obj + HASH_AT[x->type]) == x->hash;
 +}
 +
 +// (under g_lock) a heap pass is long: at most one try every 3 s, found or not
@@ -911,10 +903,10 @@ index 0000000..3df596f
 +    return n;
 +}
 diff --git a/runtime/hle/framepace.c b/runtime/hle/framepace.c
-index 3b14695..b9d3323 100644
+index 8a23d0e..4b40109 100644
 --- a/runtime/hle/framepace.c
 +++ b/runtime/hle/framepace.c
-@@ -104,6 +104,8 @@ static const char *event_name(void) {
+@@ -105,6 +105,8 @@ static const char *event_name(void) {
      return n && n < 32 && !p[n] ? p : "";
  }
  
@@ -924,7 +916,7 @@ index 3b14695..b9d3323 100644
  //   Master Kohga's entrance in the Yiga Clan hideout froze after "The strong! The burly!!" (#196, #455, #533): the picture
  //   went on, the cutscene never finished. The hideout's EventTag starts Electric_Relic<WaitStable>, which calls the demo
 diff --git a/runtime/items.c b/runtime/items.c
-index 83c1807..8abe8ea 100644
+index 8449796..d070754 100644
 --- a/runtime/items.c
 +++ b/runtime/items.c
 @@ -163,6 +163,9 @@ static void names_read(void) {
@@ -937,7 +929,7 @@ index 83c1807..8abe8ea 100644
  static pthread_once_t g_once = PTHREAD_ONCE_INIT;
  
  static uint32_t tag(const char *s) {  // (the tags are CRC-32s of their names)
-@@ -227,12 +230,13 @@ static void list_read(void) {
+@@ -230,12 +233,13 @@ static void list_read(void) {
      const uint8_t *types = d + actors + 4;
      uint32_t vals = actors + 4 + ((na + 3) & ~3u);
      g_items = calloc(na ? na : 1, sizeof *g_items);
@@ -953,7 +945,7 @@ index 83c1807..8abe8ea 100644
              continue;
          // The One-Hit Obliterator belongs to one quest: outside it, Link can't put it away and it drains his hearts (#652)
          if (!strcmp(actor, "Weapon_Sword_502")) continue;
-@@ -243,7 +247,8 @@ static void list_read(void) {
+@@ -246,7 +250,8 @@ static void list_read(void) {
          if (cat == ITEMCAT_MATERIAL && !strncmp(actor, "Obj_", 4) && strstr(actor, "Arrow")) cat = ITEMCAT_ARROW;  // (bundles: Obj_AncientArrow_C_01)
          const char *name = msg_name(actor);
          if (!name) continue;
@@ -963,7 +955,7 @@ index 83c1807..8abe8ea 100644
          it->actor = copy(actor, strlen(actor)), it->name = name, it->cat = cat;
          it->stack = cat == ITEMCAT_ARROW || cat == ITEMCAT_MATERIAL;
          it->value = cat <= ITEMCAT_SHIELD ? byml_get_int(&b, a, "generalLife", 1) * 100 : 1;
-@@ -260,8 +265,10 @@ static void list_read(void) {
+@@ -263,8 +268,10 @@ static void list_read(void) {
      for (int i = 0; i < g_nitems; i++)
          if (!w || g_items[w - 1].cat != g_items[i].cat || strcmp(g_items[w - 1].name, g_items[i].name)) g_items[w++] = g_items[i];
      g_nitems = w;
@@ -975,7 +967,7 @@ index 83c1807..8abe8ea 100644
      free(d);
  }
  
-@@ -347,29 +354,36 @@ static int pouch_entries(uint64_t pmdm) {
+@@ -350,29 +357,36 @@ static int pouch_entries(uint64_t pmdm) {
      return used + free_ == 420 ? (int)used : -1;
  }
  
@@ -1020,7 +1012,7 @@ index 83c1807..8abe8ea 100644
      if (!atomic_load_explicit(&g_pending, memory_order_relaxed)) return;
      Request req[32];
      pthread_mutex_lock(&g_req_lock);
-@@ -400,6 +414,7 @@ void rt_item_tick(Cpu *c, uint64_t get, uint64_t mgr, uint64_t sstr_vt) {
+@@ -403,6 +417,7 @@ void rt_item_tick(Cpu *c, uint64_t get, uint64_t mgr, uint64_t sstr_vt) {
              if (!stack) added++;
          }
          LOG("[items] %s: value %d, %d of %d\n", req[r].actor, req[r].value, added, req[r].asked);
@@ -1028,7 +1020,7 @@ index 83c1807..8abe8ea 100644
          pthread_mutex_lock(&g_req_lock);
          g_result = (ItemResult){req[r].seq, req[r].item, req[r].asked, added};
          pthread_mutex_unlock(&g_req_lock);
-@@ -429,6 +444,14 @@ static void cmd_give(int argc, char **argv, ControlReply *r) {
+@@ -432,6 +447,14 @@ static void cmd_give(int argc, char **argv, ControlReply *r) {
              if (!has_text(g_items[k].name, argv[1]) && !has_text(g_items[k].actor, argv[1])) continue;
              if (!found++) first = k;
          }
@@ -1043,7 +1035,7 @@ index 83c1807..8abe8ea 100644
          if (!found) { control_fail(r, "No item has this in its name or actor"); return; }
          if (found > 1) {
              // (the fields for scripts, the lines for the console, which prints them instead)
-@@ -455,9 +478,32 @@ static void cmd_give(int argc, char **argv, ControlReply *r) {
+@@ -458,9 +481,32 @@ static void cmd_give(int argc, char **argv, ControlReply *r) {
      control_field_str(r, "applied", "next frame in play");
  }
  
@@ -1077,10 +1069,10 @@ index 83c1807..8abe8ea 100644
      control_register(cmds, (int)(sizeof cmds / sizeof *cmds));
  }
 diff --git a/runtime/rupees.c b/runtime/rupees.c
-index 9cd94fe..6378aac 100644
+index b989854..abdc0a2 100644
 --- a/runtime/rupees.c
 +++ b/runtime/rupees.c
-@@ -80,7 +80,8 @@ static void *rupee_thread(void *arg) {
+@@ -81,7 +81,8 @@ static void *rupee_thread(void *arg) {
      while (!stop_req) {
          int32_t set = want;
          pthread_mutex_unlock(&lock);
@@ -1091,10 +1083,10 @@ index 9cd94fe..6378aac 100644
              rupee_obj = find_rupees();
              if (rupee_obj) LOG("[cheats] rupees: the rupee count is at %llx\n", (unsigned long long)rupee_obj);
 diff --git a/runtime/services/fs.c b/runtime/services/fs.c
-index a005da6..6334b1d 100644
+index 214b3a2..b529107 100644
 --- a/runtime/services/fs.c
 +++ b/runtime/services/fs.c
-@@ -1393,6 +1393,7 @@ void fs_title_version_patch(void) {
+@@ -1419,6 +1419,7 @@ void fs_title_version_patch(void) {
  }
  
  // Virtual RomFS image read: original bytes, with the patched file table and appended replacement files.
@@ -1102,7 +1094,7 @@ index a005da6..6334b1d 100644
  static ssize_t romfs_read(RomImage *m, uint8_t *dst, uint64_t size, uint64_t off) {
      if (!m->ov_n && !m->npatches) return romfs_image_pread(m->img, dst, size, off);
      uint64_t done = 0;
-@@ -1411,6 +1412,7 @@ static ssize_t romfs_read(RomImage *m, uint8_t *dst, uint64_t size, uint64_t off
+@@ -1437,6 +1438,7 @@ static ssize_t romfs_read(RomImage *m, uint8_t *dst, uint64_t size, uint64_t off
              } else {
                  if (m->ov[i].fd < 0) m->ov[i].fd = open(m->ov[i].path, O_RDONLY);
                  r = in < m->ov[i].size ? pread(m->ov[i].fd, dst + done, n < m->ov[i].size - in ? n : m->ov[i].size - in, (off_t)in) : 0;
@@ -1111,11 +1103,11 @@ index a005da6..6334b1d 100644
              if (r < 0) r = 0;
              if ((uint64_t)r < n) memset(dst + done + r, 0, n - r);
 diff --git a/runtime/settings.c b/runtime/settings.c
-index 986d58a..1ab589b 100644
+index 7cf54e9..74bb631 100644
 --- a/runtime/settings.c
 +++ b/runtime/settings.c
-@@ -347,6 +347,12 @@ void settings_load(void) {
-         else if (!strcmp(key, "start_at_continue")) g_settings.auto_continue = atoi(val) != 0;
+@@ -602,6 +602,12 @@ void settings_load(void) {
+         }
          else if (!strcmp(key, "infinite_stamina")) g_settings.infinite_stamina = atoi(val) != 0;
          else if (!strcmp(key, "infinite_rupees")) g_settings.infinite_rupees = atoi(val) != 0;
 +        else if (!strcmp(key, "ap_server")) snprintf(g_settings.ap_server, sizeof g_settings.ap_server, "%s", val);
@@ -1127,7 +1119,7 @@ index 986d58a..1ab589b 100644
          else if (!strcmp(key, "weather")) {
              g_settings.weather = 0;
              for (int i = 0; i < WEATHER_COUNT; i++)
-@@ -566,6 +572,10 @@ void settings_save(void) {
+@@ -864,6 +870,10 @@ void settings_save(void) {
      fprintf(f, "infinite_arrows = %d\n", g_settings.infinite_arrows);
      fprintf(f, "infinite_stamina = %d\n", g_settings.infinite_stamina);
      fprintf(f, "infinite_rupees = %d\n", g_settings.infinite_rupees);
@@ -1137,12 +1129,12 @@ index 986d58a..1ab589b 100644
 +            g_settings.ap_traplink, g_settings.ap_ringlink);
      int wx = g_settings.weather;
      fprintf(f, "weather = %s\n", g_weather_keys[wx >= 0 && wx < WEATHER_COUNT ? wx : 0]);
-     fprintf(f, "god_mode = %d\n", g_settings.god_mode);
+     int cv = g_settings.colour_vision;
 diff --git a/runtime/settings.h b/runtime/settings.h
-index cf642be..345dbef 100644
+index 57a71c6..e9c9a6f 100644
 --- a/runtime/settings.h
 +++ b/runtime/settings.h
-@@ -168,6 +168,11 @@ typedef struct {
+@@ -207,6 +207,11 @@ typedef struct {
      bool infinite_arrows;    // shooting a bow takes no arrows from the pouch
      bool infinite_stamina;   // the stamina wheel never goes down
      bool infinite_rupees;    // the wallet is kept at 9999 rupees (runtime/rupees.c)
@@ -1156,10 +1148,10 @@ index cf642be..345dbef 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..3ff329f
+index 0000000..d099dfa
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,766 @@
+@@ -0,0 +1,831 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -1307,6 +1299,8 @@ index 0000000..3ff329f
 +std::set<std::string> g_tags;
 +bool g_goal_sent;
 +int g_given, g_step;                      // items carried out, and the step inside the next one
++bool g_save_count;                        // the save's AP_Given is the count (after the first look: a run from
++                                          // before has its count put in it once)
 +double g_killed_at;                       // a DeathLink death: Link's own death right after isn't sent back
 +int g_deaths_seen = -1;
 +int32_t g_rupees_seen = -1;
@@ -1325,12 +1319,14 @@ index 0000000..3ff329f
 +void save_state() {
 +    std::string dir = std::string(rt_data_root()) + "/ap";
 +    CreateDirectoryA(dir.c_str(), nullptr);
-+    if (FILE *f = fopen(state_path().c_str(), "w")) fprintf(f, "%d %d\n", g_given, g_step), fclose(f);
++    if (FILE *f = fopen(state_path().c_str(), "w")) fprintf(f, "%d %d %d\n", g_given, g_step, g_save_count), fclose(f);
 +}
 +void load_state() {
-+    g_given = g_step = 0;
++    g_given = g_step = 0, g_save_count = false;
 +    if (FILE *f = fopen(state_path().c_str(), "r")) {
-+        if (fscanf(f, "%d %d", &g_given, &g_step) != 2) g_given = g_step = 0;
++        int counted = 0;
++        if (fscanf(f, "%d %d %d", &g_given, &g_step, &counted) < 2) g_given = g_step = 0;
++        g_save_count = counted != 0;
 +        fclose(f);
 +    }
 +}
@@ -1689,8 +1685,49 @@ index 0000000..3ff329f
 +    }
 +}
 +
++// What a received item writes into the game data (a region's Map, a pouch slot, rupees) is saved only when an event
++// sets it: its want, for the sync's event to set it the game's way (botw_ap tools/give_trigger.py KEEP_ON / KEEP_INT)
++// A flag to turn on is left to the event: an event's set is saved only when it changes the flag. false: no want for it
++// (an overlay from before this)
++bool keep(const char *flag, bool on) {
++    std::string f(flag);
++    int32_t v = 0;
++    if (on) return gdt_change(crc("AP_Want_" + f), 1, true);
++    return gdt_get(crc(f), &v) && gdt_change(crc("AP_Want_" + f), v, true) && gdt_change(crc("AP_Set_" + f), 1, true);
++}
++
++// The count of the items carried out is the save's (AP_Given, set by the item events). AP_Set_Given (not saved) is off
++// once the game starts or loads a save - a Game Over, an older save: the game data is then that save's, so the items
++// carry on from its count, the ones after it given again. A run from before this has its count put in the save, its
++// Maps on again (what it wrote was never saved)
++void count_check() {
++    int32_t saved = 0, ready = 0;
++    if (!gdt_get(crc("AP_Given"), &saved) || !gdt_get(crc("AP_Set_Given"), &ready) || ready) return;
++    if (!g_save_count && saved < g_given) {
++        json actions = g_slot_data.value("actions", json::object());
++        for (int i = 0; i < g_given && i < (int)g_items.size(); i++)
++            for (auto &st : actions.value(std::to_string(g_items[i].value("item", (int64_t)0)), json::array())) {
++                std::string s = st.get<std::string>();
++                if (s[0] == '@') s = s.substr(s.find(' ') + 1);
++                char w0[64] = "", w1[96] = "";
++                sscanf(s.c_str(), "%63s %95s", w0, w1);
++                if (!strcmp(w0, "!set")) keep(w1, true);
++            }
++        LOG("[ap] items: %d carried out before the save kept count: in it now\n", g_given);
++        saved = g_given, g_env_sync = true;
++    } else if (saved != g_given) {
++        LOG("[ap] items: this save has had %d of them, not %d: from there\n", saved, g_given);
++    }
++    g_save_count = true;
++    g_given = saved, g_step = 0;
++    gdt_change(crc("AP_Want_Given"), g_given, true);
++    gdt_change(crc("AP_Set_Given"), 1, true);
++    save_state();
++}
++
 +// ---- the game side, twice a second (under g_lock)
 +void game_tick() {
++    if (g_connected && in_world()) count_check();  // (first: no event may save a count from before a load)
 +    if (g_weather_restore >= 0 && now_s() > g_weather_until) g_settings.weather = g_weather_restore, g_weather_restore = -1;
 +    for (auto it = g_prohibit_until.begin(); it != g_prohibit_until.end();)
 +        if (now_s() > it->second && gdt_change(crc(it->first), 0, true)) {
@@ -1746,7 +1783,7 @@ index 0000000..3ff329f
 +            notify({{"Goal complete!", GOLD}});
 +        }
 +    }
-+    // items
++    // items (count_check: where to carry on from, after a load)
 +    json actions = g_slot_data.value("actions", json::object());
 +    while (g_given < (int)g_items.size()) {
 +        const json &it = g_items[g_given];
@@ -1755,6 +1792,7 @@ index 0000000..3ff329f
 +        json steps = actions.contains(key) ? actions[key] : json::array();
 +        int copy = 0;  // (which copy of this item this is: "@<k> <action>" is only for the k-th, progressive items)
 +        for (int i = 0; i <= g_given; i++) copy += g_items[i].value("item", (int64_t)0) == id;
++        bool by_event = false, wrote = false;  // (the scene gave it, its count with it; it wrote game data to keep)
 +        for (; g_step < (int)steps.size(); g_step++, save_state()) {
 +            std::string s = steps[g_step].get<std::string>();
 +            if (s[0] == '@') {
@@ -1766,20 +1804,27 @@ index 0000000..3ff329f
 +            sscanf(s.c_str(), "%63s %95s %31s", w0, w1, w2);
 +            if (!strcmp(w0, "!demo") || !strcmp(w0, "!msg")) {
 +                if (g_env_sync && !g_demo_raised) return;  // (a sync waits: it goes first, at the next tick)
++                gdt_change(crc("AP_Want_Given"), g_given + 1, true);  // (the scene's event saves the count with it)
 +                int r = demo(w1);
 +                if (r == 0) return;
 +                // (the scene gave it: the direct gives after it are skipped; "!msg": only its banner, the rest follows)
-+                if (r == 1 && !strcmp(w0, "!demo")) g_step = (int)steps.size() - 1;
++                if (r == 1 && !strcmp(w0, "!demo")) g_step = (int)steps.size() - 1, by_event = true;
 +            } else if (!strcmp(w0, "!trap")) {
 +                trap(w1);
 +                if (g_tags.count("TrapLink"))
 +                    send(json::array({{{"cmd", "Bounce"}, {"tags", {"TrapLink"}},
 +                                       {"data", {{"time", (double)time(nullptr)}, {"source", g_slot_name}, {"trap_name", item_name(id, g_slot)}}}}}));
 +            } else if (w0[0] == '!') {
-+                bool ok = gdt_change(crc(w1), atof(w2), !strcmp(w0, "!set"));
++                bool set = !strcmp(w0, "!set");
++                if (set && atof(w2) != 0 && keep(w1, true)) {  // (the sync's event turns it on, so it is saved)
++                    wrote = true;
++                    continue;
++                }
++                bool ok = gdt_change(crc(w1), atof(w2), set);
 +                if (!ok) return;  // (the game data isn't there yet: again next tick, from this step)
 +                // (rupees an item gives aren't the player's own: not for RingLink)
 +                if (!strcmp(w1, "CurrentRupee") && g_rupees_seen >= 0) g_rupees_seen += atoi(w2);
++                if (!set) keep(w1, false), wrote = true;  // (the number, copied by the sync's event: saved)
 +            } else {
 +                bool key_item = !strcmp(w0, "givekey");
 +                int r = items_give_actor(key_item ? w1 : w0, atoi(key_item ? w2 : w1));
@@ -1787,6 +1832,8 @@ index 0000000..3ff329f
 +            }
 +        }
 +        g_given++, g_step = 0;
++        gdt_change(crc("AP_Want_Given"), g_given, true);
++        if (!by_event || wrote) g_env_sync = true;  // (the sync's event saves the count, and what the item wrote)
 +        save_state();
 +    }
 +    // DeathLink: Link's own deaths
@@ -1926,14 +1973,24 @@ index 0000000..3ff329f
 +        y += h + gap;
 +    }
 +}
++
++// (the console's `ap`: where the client is - what holds the items back when none arrive)
++extern "C" void ap_client_state(char *buf, size_t n) {
++    std::lock_guard<std::mutex> l(g_lock);
++    int32_t pending = -1, done = -1;
++    gdt_get(crc("AP_Pending"), &pending), gdt_get(crc("AP_Done"), &done);
++    snprintf(buf, n, "connected=%d world=%d sync=%d syncing=%d raised=%d event=%d pending=%d done=%d given=%d/%zu step=%d",
++             g_connected, in_world(), g_env_sync, g_env_syncing, g_demo_raised, framepace_in_event(), pending, done, g_given,
++             g_items.size(), g_step);
++}
 diff --git a/runtime/ui/game_options.mm b/runtime/ui/game_options.mm
-index 125355a..d26e7fd 100644
+index 2ed8c2a..5b818c7 100644
 --- a/runtime/ui/game_options.mm
 +++ b/runtime/ui/game_options.mm
-@@ -49,6 +49,11 @@ void menu_request_window_apply(void);       // menu.mm (fullscreen / window size
- void menu_size_list_open(void);             // menu.mm (Window size's list, over the screen)
+@@ -52,6 +52,11 @@ void menu_size_list_open(void);             // menu.mm (Window size's list, over
  bool menu_size_list_up(void);
  bool renderer_gpu_rtx(void);                // vulkan/device.c, metal.m
+ const char *vk_hdr_icc_description(void);   // runtime/nvn/vulkan/device.c
 +int menu_keyboard_run(const char *initial, int max_len, char *out, int cap);  // menu.mm
 +void ap_request_connect(void);              // runtime/control_ap.c
 +const char *ap_status(void);
@@ -1942,20 +1999,21 @@ index 125355a..d26e7fd 100644
  }
  
  namespace {
-@@ -92,9 +97,10 @@ struct Entry {           // the game's option entry (0x30)
+@@ -95,9 +100,11 @@ struct Entry {           // the game's option entry (0x30)
  static_assert(sizeof(Entry) == 0x30);
  enum { KIND_TOGGLE = 0, KIND_CHOICE = 1, KIND_BUTTON = 2 };
  
--enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_COUNT };
-+enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_AP, P_COUNT };
+-enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_HDR, P_COUNT };
++enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_HDR, P_AP,
++            P_COUNT };
  // A_FIXED: a greyed row for an input that can never be rebound (Item.arg: 0 Esc, 1 F2); A_BIND: Item.arg is a binding slot (an input, or BIND_ACTION + an action); the next key, mouse button or controller button binds it
--enum Action { A_NONE, A_PAGE, A_BIND, A_BINDS_HEADER, A_RESET_BINDS, A_RESTART, A_QUIT, A_SIZE_LIST, A_FIXED, A_REPORT };
+-enum Action { A_NONE, A_PAGE, A_BIND, A_BINDS_HEADER, A_RESET_BINDS, A_RESTART, A_QUIT, A_SIZE_LIST, A_FIXED, A_REPORT, A_SAVE_HDR_LOOK };
 +enum Action { A_NONE, A_PAGE, A_BIND, A_BINDS_HEADER, A_RESET_BINDS, A_RESTART, A_QUIT, A_SIZE_LIST, A_FIXED, A_REPORT,
-+              A_AP_EDIT, A_AP_CONNECT };  // (A_AP_EDIT arg: 0 server, 1 slot, 2 password)
++              A_SAVE_HDR_LOOK, A_AP_EDIT, A_AP_CONNECT };  // (A_AP_EDIT arg: 0 server, 1 slot, 2 password)
  static char g_report_dir[64];  // Problem report: the zip made this run (its row's description names it)
  
  struct Item {
-@@ -329,9 +335,42 @@ const char *bind_label(const Item &it, int) {
+@@ -355,9 +362,42 @@ const char *bind_label(const Item &it, int) {
      return buf;
  }
  
@@ -1998,7 +2056,7 @@ index 125355a..d26e7fd 100644
      v.push_back(button(P_MAIN, "Gameplay", "Mini-map, HUD, jump button and more.", "Open", A_PAGE, P_GAMEPLAY));
      v.push_back(button(P_MAIN, "Video", "Screen, resolution and image quality.", "Open", A_PAGE, P_VIDEO));
  #ifndef __APPLE__
-@@ -355,6 +394,8 @@ void build_items(void) {
+@@ -382,6 +422,8 @@ void build_items(void) {
      v.push_back(button(P_MAIN, "Quit game", "To the desktop, or back to the Savage Wind start screen.", "Quit",
                         A_QUIT, 0));
  
@@ -2007,8 +2065,8 @@ index 125355a..d26e7fd 100644
      // Video (fullscreen and the window size are applied by the window loop: menu.mm)
      // Graphics preset (settings.c k_gpreset): sets rows of the Advanced page; "Custom"
      // (settings matching no preset) is shown, never picked
-@@ -1822,6 +1863,21 @@ extern "C" int rt_opt_decide(uint64_t row) {
-         return 2;
+@@ -2228,6 +2270,21 @@ extern "C" int rt_opt_decide(uint64_t row) {
+     }
      case A_QUIT:
          return 3;
 +    case A_AP_EDIT: {  // the keyboard, on this (game) thread as the game's own name entry has it
@@ -2029,7 +2087,7 @@ index 125355a..d26e7fd 100644
      case A_REPORT: {  // (runtime/problem_report.c) made in the data folder; no file manager over the game
          snprintf(g_report_dir, sizeof g_report_dir, "%s", problem_report_make());
          return 2;
-@@ -1839,6 +1895,8 @@ extern "C" uint64_t rt_opt_tick(uint64_t screen) {
+@@ -2245,6 +2302,8 @@ extern "C" uint64_t rt_opt_tick(uint64_t screen) {
          quit_poll();
          if (g_quit_dialog) return 1;
      }
@@ -2039,10 +2097,10 @@ index 125355a..d26e7fd 100644
      if (g_cap_row && bind_capture_active(&d, &s, &ms)) cap_slot_was = s;
      if (g_cap_row && !bind_capture_active(&d, &s, &ms)) {
 diff --git a/runtime/ui/menu.mm b/runtime/ui/menu.mm
-index 53d3dc4..9a00b79 100644
+index 852ede0..2f5883f 100644
 --- a/runtime/ui/menu.mm
 +++ b/runtime/ui/menu.mm
-@@ -166,7 +166,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
+@@ -167,7 +167,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
  // they last used a controller.
  static std::atomic<int> g_kbd{0};  // 1 open, 2 confirmed, 3 cancelled
  static std::atomic<bool> g_last_pad{false};
@@ -2051,7 +2109,7 @@ index 53d3dc4..9a00b79 100644
  static int g_kbd_max = 8;
  // Window size's list over the game's Options screen (game_options.mm A_SIZE_LIST): up, and until when the press that
  // closed it is kept from the game
-@@ -1974,6 +1974,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
+@@ -2184,6 +2184,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
  // Everything menu_render draws, in one place: menu_render_needed (the caller's cue to drain the recorder first) and
  // menu_render (which decides again, and drains itself) must agree on it. The pointer's hover box, the console and the
  // gyro drag were missing here: their frames went to the command buffer while the recorder thread was still filling it.
@@ -2061,7 +2119,7 @@ index 53d3dc4..9a00b79 100644
  static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bool *gyro_show = NULL, GyroScene *gyro = NULL) {
      float box[4];
      GyroScene gs;
-@@ -1982,7 +1985,8 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+@@ -2192,7 +2195,8 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
      if (pointer_hover) *pointer_hover = hover;
      if (gyro_show) *gyro_show = gyro_on;
      return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || gyro_on || hover ||
@@ -2071,7 +2129,7 @@ index 53d3dc4..9a00b79 100644
  }
  
  bool menu_render_needed(void) { return menu_draws(); }
-@@ -2065,6 +2069,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
+@@ -2275,6 +2279,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
      }
  
      if (g_settings.perf_overlay != PERF_OFF) perf_overlay_draw(io, scale);

@@ -12,6 +12,7 @@ Needs oead and evfl (botw_ap/.venv). Reads the overlay folder's copies first (th
     botw_ap/.venv/Scripts/python -I tools/give_trigger.py "<Savage Wind>/extracted" <overlay folder>
 """
 import os
+import re
 import struct
 import sys
 import zlib
@@ -120,6 +121,24 @@ SYNC = len(QFLAGS)  # (AP_Q128: every AP_Want_<flag> onto its flag, the environm
 QUESTS = ["PrezentationOkamura", "TurnTestQuest"]
 QUEST_FLAGS = [f"{q}_Activated" for q in QUESTS]
 WANTS = list(ENV) + list(SPAWNS) + QUEST_FLAGS
+
+
+def _item_writes(op):
+    """the flags received items write ("!set <flag>" / "!add <flag>" in worlds/botw/items.py)"""
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "worlds", "botw", "items.py"),
+               encoding="utf8").read()
+    names = set(re.findall(rf'"{op} (\w+) ', src)) | set(re.findall(rf'"{op} (AP_Region_)\{{i:02d\}}', src))
+    out = set()
+    for n in names:
+        out |= {f"AP_Region_{i:02d}" for i in range(15)} if n == "AP_Region_" else {n}
+    return sorted(out)
+
+
+# What items write into the game data is saved only when an event sets it: the client writes it, and its want, and
+# the sync entry (AP_Q128) sets the flag from the want - KEEP_ON: turned on (never off: the want is 0 after a load);
+# KEEP_INT: the number copied, when its AP_Set_<flag> is on
+KEEP_ON = _item_writes("!set")
+KEEP_INT = [f for f in _item_writes("!add") if f != "CurrentHart"]  # (the hearts Link has now: not a stale copy)
 FLOW = "Archipelago"
 
 
@@ -200,10 +219,18 @@ def dispatch_flow():
     f.flowchart.name = FLOW
     fl = Flow(f.flowchart)
     esa = "EventSystemActor"
+    CALC = "GameDataCalcMachine"  # (the game's own events copy numbers with it: 100enemy)
     # (AP_Done before AP_Pending goes off: the client never sees both off unless a load cleared them; nothing set
     # (a start asked for again): AP_Pending off only, so no delivery is reported)
     clear = fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": PENDING})
     done = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": DONE}, clear)
+    # (every run ends committing the client's count of items given into the save's AP_Given: only what an event sets
+    # is saved - a scene and the count of it go together, tools/shop_sanity.py)
+    # (only once the client has its count right since the last load - AP_Set_Given, not saved: a want of 0 after a load
+    # isn't copied over the save's)
+    done = fl.switch(esa, "CheckFlag", {"FlagName": "AP_Set_Given"}, {1: fl.action(
+        CALC, "Demo_GameDataCopyInt", {"IsWaitFinish": True, "GameDataIntSrcName": "AP_Want_Given",
+                                      "GameDataIntDstName": "AP_Given"}, done), 0: done})
     nxt_check = clear
     for i in reversed(range(len(ITEMS))):
         actor = ITEMS[i]
@@ -230,6 +257,14 @@ def dispatch_flow():
             first = fl.action(actor or esa, a, params, first)
         nxt_check = fl.switch(esa, "CheckFlag", {"FlagName": QFLAGS[i]}, {1: first, 0: nxt_check})
     off = fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": QFLAGS[SYNC - 1]}, done)
+    for flag in reversed(KEEP_INT):  # (a received item's number: the client's value, so the save has it)
+        copy_ = fl.action(CALC, "Demo_GameDataCopyInt", {"IsWaitFinish": True, "GameDataIntSrcName": f"AP_Want_{flag}",
+                                                        "GameDataIntDstName": flag},
+                        fl.action(esa, "Demo_FlagOFF", {"IsWaitFinish": True, "FlagName": f"AP_Set_{flag}"}, off))
+        off = fl.switch(esa, "CheckFlag", {"FlagName": f"AP_Set_{flag}"}, {1: copy_, 0: off})
+    for flag in reversed(KEEP_ON):  # (a received item's flag: on, so the save has it)
+        on_ = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": flag}, off)
+        off = fl.switch(esa, "CheckFlag", {"FlagName": f"AP_Want_{flag}"}, {1: on_, 0: off})
     for flag in reversed(WANTS):  # (each flag as its want: changed by the event, so the map's link tags see it)
         on_ = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": flag}, off)
         if flag in QUEST_FLAGS:  # (a quest starts as the game's own do: its first step, then its flag - once:
@@ -462,7 +497,8 @@ def main(ex, out):
     # flags only from a plain one, as Waikuteru's randomizer keeps its own)
     first = next(f.name for f in gd.get_files() if "bool_data" in f.name)
     plain = next(f.name for f in gd.get_files() if f.name.lstrip("/").startswith("bool_data"))
-    for name, flags in ((first, [PENDING, DONE, VOID, NEVER] + QFLAGS + list(ENV) + [f"AP_Want_{w}" for w in WANTS]),
+    for name, flags in ((first, [PENDING, DONE, VOID, NEVER] + QFLAGS + list(ENV) + [f"AP_Want_{w}" for w in WANTS + KEEP_ON]
+                         + [f"AP_Set_{f}" for f in KEEP_INT + ["Given"]]),
                         (plain, list(SPAWNS))):  # (the quests' own flags: the game has them, saved)
         b = oead.byml.from_binary(bytes(gw.files[name] if name in gw.files else gd.get_file(name).data))
         have = {str(e["DataName"]) for e in b["bool_data"]}
@@ -474,6 +510,18 @@ def main(ex, out):
                     "IsProgramWritable": True, "IsSave": False, "MaxValue": True, "MinValue": False,
                     "ResetType": s32(0)}))
         gw.files[name] = oead.byml.to_binary(b, big_endian=False, version=2)
+    # (the numbers' wants: not saved)
+    s32n = next(f.name for f in gd.get_files() if f.name.startswith("/s32_data"))
+    b = oead.byml.from_binary(bytes(gw.files[s32n] if s32n in gw.files else gd.get_file(s32n).data))
+    have = {str(e["DataName"]) for e in b["s32_data"]}
+    for fl in [f"AP_Want_{f}" for f in KEEP_INT]:
+        if fl not in have:
+            b["s32_data"].append(to_byml({
+                "DataName": fl, "DeleteRev": s32(0xFFFFFFFF), "HashValue": s32(zlib.crc32(fl.encode())),
+                "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
+                "IsProgramWritable": True, "IsSave": False, "MaxValue": s32(999999), "MinValue": s32(0),
+                "ResetType": s32(0)}))
+    gw.files[s32n] = oead.byml.to_binary(b, big_endian=False, version=2)
     gdata = gw.write()[1]
     bw.files["GameData/gamedata.ssarc"] = oead.yaz0.compress(gdata)
     sizes["GameData/gamedata.sarc"] = len(gdata) + 0x1000

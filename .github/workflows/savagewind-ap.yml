@@ -1,0 +1,121 @@
+# The Archipelago build of Savage Wind, kept in step with Savage Wind's releases. Every day (or for the version asked
+# for), the newest Savage Wind release without one here gets it: savagewind-archipelago.patch applied to that release's
+# source, savagewind.exe built as Savage Wind's own release is (MSYS2 UCRT64, RELEASE=1: no console window, PGO +
+# ThinLTO), checked to load only the DLLs the stock savagewind.exe of that release loads, and put on a release here as
+# savagewind-ap-<version>.exe with its .sha256 - where the launcher's "Update Savage Wind" looks for it.
+# No game code and no Nintendo data: the same `make` a Windows player runs.
+name: Savage Wind build
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Savage Wind version, e.g. 0.6.0-alpha.6 (empty: the newest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: savagewind-build
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.version }}
+        run: |
+          v="$WANT"
+          if [ -z "$v" ]; then
+            v=$(gh api repos/Revivedx/SavageWindRecomp/releases --jq '[.[] | select(.draft | not)][0].tag_name')
+            v="${v#v}"
+          fi
+          if gh release view "savagewind-$v" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null \
+               | grep -qx "savagewind-ap-$v.exe"; then
+            echo "Savage Wind $v has its Archipelago build already"
+            v=""
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    if: needs.check.outputs.version != ''
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      V: ${{ needs.check.outputs.version }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ap
+      - uses: actions/checkout@v4
+        with:
+          repository: Revivedx/SavageWindRecomp
+          ref: v${{ needs.check.outputs.version }}
+          path: sw
+          fetch-depth: 0  # (a 3-way apply finds the files the patch was made against)
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make git unzip mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-ffmpeg mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-vulkan-loader
+            mingw-w64-ucrt-x86_64-shaderc mingw-w64-ucrt-x86_64-spirv-tools mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-llvm
+
+      - name: The Archipelago changes on Savage Wind ${{ env.V }}
+        working-directory: sw
+        run: |
+          git config user.email "build@localhost" && git config user.name "build"
+          git apply --3way --whitespace=nowarn ../ap/savagewind-archipelago.patch
+          git status --short
+
+      - name: Build savagewind.exe (as Savage Wind's release)
+        working-directory: sw
+        run: |
+          # (the profile is for the clang that wrote it: another one builds it plain)
+          make -j$(nproc) B=build/ap RELEASE=1 PGO=use LTO=thin build/ap/savagewind.exe \
+            || { rm -rf build/ap && make -j$(nproc) B=build/ap RELEASE=1 build/ap/savagewind.exe; }
+          ls -l build/ap/savagewind.exe
+
+      - name: It loads only what the stock savagewind.exe of ${{ env.V }} loads
+        run: |
+          curl -sSfL -o sw.zip "https://github.com/Revivedx/SavageWindRecomp/releases/download/v$V/SavageWind-$V-windows.zip"
+          unzip -q -j -o sw.zip "*/savagewind.exe" -d stock
+          dlls() { objdump -p "$1" | awk '/DLL Name/ {print tolower($3)}' | sort -u; }
+          dlls stock/savagewind.exe > stock.txt
+          dlls sw/build/ap/savagewind.exe > ap.txt
+          extra=$(comm -13 stock.txt ap.txt)
+          if [ -n "$extra" ]; then echo "needs DLLs the release doesn't have: $extra"; exit 1; fi
+          objdump -p sw/build/ap/savagewind.exe | grep -q "Subsystem.*Windows GUI"
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $name = "savagewind-ap-$env:V.exe"
+          Copy-Item sw/build/ap/savagewind.exe $name
+          (Get-FileHash $name -Algorithm SHA256).Hash.ToLower() | Out-File -Encoding ascii -NoNewline "$name.sha256"
+          $tag = "savagewind-$env:V"
+          $notes = "The Archipelago build of Savage Wind $env:V (savagewind.exe), made from Savage Wind's own source " +
+                   "with savagewind-archipelago.patch. The launcher installs it: open it and press Update Savage Wind " +
+                   "or Set up. Not for any other Savage Wind version."
+          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag -R $env:GITHUB_REPOSITORY --prerelease --title "Savage Wind $env:V - Archipelago build" --notes $notes
+          }
+          gh release upload $tag $name "$name.sha256" -R $env:GITHUB_REPOSITORY --clobber

@@ -45,6 +45,21 @@ def main(ex, out):
             "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
             "IsProgramWritable": True, "IsSave": True, "MaxValue": True, "MinValue": False, "ResetType": s32(0)}))
     gw.files[name] = oead.byml.to_binary(b, big_endian=False, version=2)
+    # The received items' count (runtime/ui/ap_client.mm). The game saves only what its events set, not a value written
+    # in its memory: AP_Given, saved, how many items were carried out, set by the item event from AP_Want_Given (the
+    # client's, not saved; tools/give_trigger.py) - a load (a Game Over) goes back to what that save had, and the
+    # items after it are given again
+    numbers = {"AP_Given": True, "AP_Want_Given": False}
+    s32n = next(f.name for f in gd.get_files() if f.name.startswith("/s32_data"))
+    n = oead.byml.from_binary(bytes(gd.get_file(s32n).data))
+    numbers = {fl: save for fl, save in numbers.items() if fl not in {str(e["DataName"]) for e in n["s32_data"]}}
+    for fl, save in numbers.items():
+        n["s32_data"].append(to_byml({
+            "DataName": fl, "DeleteRev": s32(0xFFFFFFFF), "HashValue": s32(zlib.crc32(fl.encode())),
+            "InitValue": s32(0), "IsEventAssociated": False, "IsOneTrigger": False, "IsProgramReadable": True,
+            "IsProgramWritable": True, "IsSave": save, "MaxValue": s32(999999), "MinValue": s32(0), "ResetType": s32(0)}))
+    gw.files[s32n] = oead.byml.to_binary(n, big_endian=False, version=2)
+    flags += [fl for fl, save in numbers.items() if save]  # (the save's format lists the saved ones by name)
     gdata = gw.write()[1]
     bw.files["GameData/gamedata.ssarc"] = oead.yaz0.compress(gdata)
     sv = oead.Sarc(oead.yaz0.decompress(bytes(boot.get_file("GameData/savedataformat.ssarc").data)))

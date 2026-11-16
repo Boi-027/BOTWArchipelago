@@ -11,7 +11,9 @@ until then.
 import math
 import os
 import queue
+import shutil
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -198,6 +200,7 @@ class App(tk.Tk):
             self.iconbitmap(ico)
         self.cfg = self.load_cfg()
         self.q, self.busy = queue.Queue(), False
+        self.sw_update = {}  # (Savage Wind folder -> its updater's answer: status, version)
         self.live, self.shown, self.active = {}, {}, None  # (the setup's progress, per status() step)
         self.c = tk.Canvas(self, width=W, height=H, highlightthickness=0, bg="#0b0d10")
         self.c.pack()
@@ -371,7 +374,8 @@ class App(tk.Tk):
         self.c.bind("<Button-1>", lambda e: (k := self.lm_at(e.x, e.y)) and self.show(k))
         self.put("pill", pill, PILL[0] - 22, PILL[1])
         self.put("side", side, COL - 60, 0, tags=("side",))
-        ver = self.skin.text(f"Launcher {L.VERSION}  ·  Savage Wind {L.SW_VERSION}  ·", 14, DIM)
+        swv = L.manifest_version(self.cfg["sw"]) if self.cfg.get("sw") else None
+        ver = self.skin.text(f"Launcher {L.VERSION}  ·  Savage Wind {swv or 'not chosen'}  ·", 14, DIM)
         self.put("ver", ver, COL + 4, 668, tags=("side",))
         self.put("gh", self.skin.text("GitHub", 14, SHEIKAH), COL + 10 + ver.width, 668, tags=("link", "side"))
         self.c.tag_bind("link", "<Button-1>", lambda e: webbrowser.open(L.REPO))
@@ -382,7 +386,7 @@ class App(tk.Tk):
         self.refresh()
         self.draw_world()
         if not self.log_lines:
-            self.say(f"Click Vah Ruta and choose your Savage Wind {L.SW_VERSION} folder." if not self.sw_ready()
+            self.say("Click Vah Ruta and choose your Savage Wind folder." if not self.sw_ready()
                      else "Welcome back, hero. Press Play." if self.primary()[0] == "Play"
                      else "Welcome back, hero. Press Set up to free the Divine Beasts.")
 
@@ -680,6 +684,15 @@ class App(tk.Tk):
                                  lambda k=k, h=hint: self.choose(k, h)) + 8
                 if s == "exe" and self.cfg.get("sw") and not self.busy:
                     y = self.row("p_restore", "Restore the original Savage Wind", y + 4, self.do_restore) + 8
+                if s == "sw" and st == "ok" and not self.busy:  # (Savage Wind's own updater, asked when it opens)
+                    up = self.sw_update.get(self.cfg.get("sw"), {})
+                    if up.get("status") == "available":
+                        y = self.row("p_update", f"Update Savage Wind to {up.get('version')}", y + 4, self.do_update,
+                                     GOLD) + 8
+                    else:
+                        y = self.lines("Savage Wind is up to date." if up.get("status") == "current" else
+                                       "Looking for a Savage Wind update..." if not up else
+                                       "Couldn't look for a Savage Wind update.", y, 14, DIM, 60) + 4
             self.row("p_back", "Back to Connect", y1 - 132, lambda: self.show("connect"), MUTED, 16, False)
         # the big button
         label, action, colour = self.primary()
@@ -772,6 +785,11 @@ class App(tk.Tk):
             self.st = L.status(self.cfg)
         except OSError as e:
             self.st = {"sw": ("bad", str(e))}
+        sw = self.cfg.get("sw")
+        if sw and self.st.get("sw", ("bad",))[0] == "ok" and sw not in self.sw_update:  # (once per folder: GitHub)
+            self.sw_update[sw] = {}
+            threading.Thread(target=lambda: self.q.put(("swcheck", (sw, L.sw_update_check(sw) or
+                                                                    {"status": "error"}))), daemon=True).start()
         self.draw_panel()
 
     def tick(self):
@@ -793,6 +811,10 @@ class App(tk.Tk):
                     self.live[key] = max(self.live.get(key, 0), f)
                     if f < 1:
                         self.active = key
+                elif kind == "swcheck":
+                    self.sw_update[val[0]] = val[1]
+                    if not self.busy and self.side_off == 0:
+                        self.draw_panel()
                 elif kind == "done":
                     self.busy, self.live, self.shown, self.active = False, {}, {}, None
                     self.build() if val == "rebuild" else self.refresh()
@@ -833,6 +855,35 @@ class App(tk.Tk):
             except Exception as e:
                 self.q.put(("log", f"Stopped: {e}"))
             self.q.put(("done", "rebuild"))  # (the logo now has ARCHIPELAGO under it)
+        threading.Thread(target=work, daemon=True).start()
+
+    def do_update(self):
+        if self.busy or self.st.get("sw", ("bad",))[0] != "ok":
+            return
+        sw = self.cfg["sw"]
+        if L.inside_sw(sw) and getattr(sys, "frozen", False):
+            # (Savage Wind's updater won't run while anything from its folder does: a copy of this launcher from
+            # outside it does the update, this one closes)
+            try:
+                d = os.path.join(os.path.dirname(L.CONFIG), "updating")
+                os.makedirs(d, exist_ok=True)
+                exe = os.path.join(d, os.path.basename(sys.executable))
+                shutil.copy2(sys.executable, exe)
+                subprocess.Popen([exe, "--update"], cwd=d)
+                self.destroy()
+            except OSError as e:
+                self.say(f"Couldn't start the update: {e}")
+            return
+        self.busy, self.live, self.shown = True, {}, {}
+        self.draw_panel()
+
+        def work():
+            try:
+                L.update_sw(dict(self.cfg), lambda s: self.q.put(("log", s)), lambda key, f: self.q.put(("step", (key, f))))
+            except Exception as e:
+                self.q.put(("log", f"Stopped: {e}"))
+            self.sw_update.pop(self.cfg.get("sw"), None)  # (asked again: the new version)
+            self.q.put(("done", "rebuild"))
         threading.Thread(target=work, daemon=True).start()
 
     def do_restore(self):

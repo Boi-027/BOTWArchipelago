@@ -202,6 +202,16 @@ SKIP_QUESTS = {"GanonQuest", "bf2_collabo"}  # the goal itself; an event that ca
 DLC_QUESTS = {"BalladOfHeroes", "BalladOfHeroGerudo", "BalladOfHeroGoron", "BalladOfHeroZora", "BalladOfHeroRito",
               "CarryingBlueFireEXMini", "TutorialDungeon",
               "100enemy", "MiniGame100enemy"}  # (the Trial of the Sword's: the Master Trials)
+# (minigames have no quest-log name: what the game calls the place, or who runs it)
+MINIGAME_NAMES = {"MiniGame_ParasailArchery": "Flight Range", "MiniGame_HillTower_BirdMan": "Bird-Man Research Study",
+                  "MiniGame_Bowling": "Snowball Bowling", "MiniGame_HorsebackArchery": "Mounted Archery Camp",
+                  "MiniGame_SmashGolf": "Tabantha Bridge Golf", "ShieldofKolog_mini": "Damia's Korok Challenge",
+                  "SunazarashiRace_mini": "Sand-Seal Rally", "GoronCamp_mini": "Gut Check Rock",
+                  "MiniGame_TimeLimitHunting": "Dantz's Hunting Challenge", "MiniGame_ShieldSurfing": "Shield Surfing",
+                  "MiniGame_KitakkareBF": "Aya's Challenge", "MiniGame_HorseRace": "Highland Stable Horse Race",
+                  "Gerudo_CarryIce_mini": "Ice Delivery", "MiniGame_ParasailRide": "Mimo's Paraglider Course",
+                  "MiniGame_GambleTreasureBox": "Treasure Chest Gamble", "MiniGame_Crosscountry": "Footrace",
+                  "MiniGame100enemy": "Trial of the Sword - All Trials"}
 quests = nin.byml(title["Quest/QuestProduct.sbquestpack"])
 aocq = os.path.join(AOC, "Pack", "AocMainField.pack")
 for q in quests:
@@ -211,8 +221,8 @@ for q in quests:
     cat = {"Main": "Main Quest", "Sub": "Shrine Quest", "Mini": "Side Quest"}[q["Type"]]
     if n.startswith("MiniGame") or n.endswith("_mini"):
         cat = "Minigame"
-    add(qname.get(n, n), cat, q["Steps"][-1]["NextFlag"], dlc=n in DLC_QUESTS or n.startswith("EX_"),
-        orderer=q.get("Orderer", ""))
+    add(qname.get(n) or MINIGAME_NAMES.get(n, n), cat, q["Steps"][-1]["NextFlag"],
+        dlc=n in DLC_QUESTS or n.startswith("EX_"), orderer=q.get("Orderer", ""), quest=n)
 
 # --- the Trial of the Sword (DLC): each of its three trials ---
 for n, part in (("Junior", "Beginning"), ("Middle", "Middle"), ("Senior", "Final")):
@@ -272,12 +282,29 @@ for k, v in msg.items():
         for lab, txt in nin.msbt(v).items():
             if lab.endswith("_Name"):
                 (NPC_NAMES if k.endswith(("Npc.msbt", "NPC.msbt")) else ITEM_NAMES).setdefault(lab[:-5], txt)
+
+
+def item_alias(a):
+    """a shop's ware placed in the world (no name of its own) -> the item it is: Item_Plant_G -> Item_PlantGet_G..."""
+    m = re.fullmatch(r"Obj_(\w+?)Arrow_A_01", a) or re.fullmatch(r"Obj_Arrow(Normal)_A_01", a)
+    if m:
+        return {"Normal": "NormalArrow", "Bomb": "BombArrow_A"}.get(m.group(1), m.group(1) + "Arrow")
+    for pat, rep in ((r"Item_(Plant|Mushroom)_(\w+)", r"Item_\1Get_\2"), (r"Animal_(Insect|Fish)_(\w+)", r"Item_\1Get_\2"),
+                     (r"Item_Enemy_Put_(\d+)", r"Item_Enemy_\1"), (r"Obj_Head_(\d+)", r"Armor_\1_Head")):
+        if re.fullmatch(pat, a):
+            return re.sub(pat, rep, a)
+    return None
+
+
 for s in shop_slots(EX):
     base = re.sub(r"_(\d|DLC2nd)$", "", s["npc"])  # (a second copy of a merchant, as Rhondson's in Tarrey Town)
     who = ("Beedle" if s["npc"].startswith("Npc_TripMaster") else "Ancient Oven" if s["npc"].startswith("TwnObj_AncientOven")
            else NPC_NAMES.get(s["npc"]) or NPC_NAMES.get(base) or s["npc"])
     where = near(*s["pos"]) if s["pos"] else "traveling"
     what = ITEM_NAMES.get(s["item"]) or NPC_NAMES.get(s["item"]) or s["item"]
+    if what == s["item"] and ITEM_NAMES.get(item_alias(s["item"])):
+        # (Isha's second set of the same jewels: kept apart from the first)
+        what = ITEM_NAMES[item_alias(s["item"])] + (" #2" if s["item"].startswith("Obj_Head_") else "")
     locs.append(dict(name=f"Shop - {who} ({where}) - {what}", category="Shop", flag=s["flag"],
                      hash=zlib.crc32(s["flag"].encode()), dlc=False, plateau=False,
                      pos=[round(s["pos"][0]), round(s["pos"][1])] if s["pos"] else None))
@@ -287,11 +314,12 @@ for s in shop_slots(EX):
 # Beasts by where they rest, Hestu and the Trial of the Sword in the Korok Forest ---
 from regions import NAMES as REGION_NAMES, PLATEAU, Grid  # noqa: E402
 grid = Grid(EX)
-who_pos = {}
+who_pos, who_all = {}, defaultdict(list)
 from shops import field_units  # noqa: E402
 for _, _, _, raw in field_units(EX):
     for o in nin.byml(raw).get("Objs", []):
         who_pos.setdefault(o["UnitConfigName"], (o["Translate"][0], o["Translate"][2]))
+        who_all[o["UnitConfigName"]].append((o["Translate"][0], o["Translate"][2]))
 BEAST_REGION = {"Vah Ruta": 11, "Vah Medoh": 1, "Vah Rudania": 9, "Vah Naboris": 3}
 for l in locs:
     pos = shrine_pos.get(l["name"].split(" Chest")[0]) if l["category"] == "Shrine Chest" else l["pos"]
@@ -307,6 +335,66 @@ for l in locs:
     else:
         l["region"] = -1
     l.pop("orderer", None)
+
+# --- where the tracker pins what has no place of its own (spot; spot_at: the pin's name). Only the map: pos and region
+# stay the logic's. A quest where whoever gives it stands (one of them: its place on the map, else who is in its first
+# steps), a memory where it is remembered (RememberTag; MemoryPhotoSaveDistrictName gives the photos' order), a
+# Divine Beast and its chests (inside: their own coordinates) where the beast waits, Hestu and the Trial at the forest ---
+marker = {}
+for m in field["LocationMarker"] + field["LocationPointer"]:
+    if m.get("MessageID"):
+        marker.setdefault(m["MessageID"], (m["Translate"]["X"], m["Translate"]["Z"]))
+beast_at = {m["MessageID"]: (m["Translate"]["X"], m["Translate"]["Z"]) for m in field["LocationMarker"]
+            if m.get("WarpDestMapName", "").startswith("MainFieldDungeon/Remains")}
+quest_by = {q["Name"]: q for q in quests}
+SPOT_WHO = {"Seek Out Impa": "Npc_Kakariko001"}  # (given on the plateau, done at Impa's)
+# album photo -> about where (the RememberTag nearest is the spot); 012 is set by nothing in the game files
+MEMORY_AT = {0: (-254, -98), 1: (-681, 1224), 2: (-3501, -421), 3: (-3193, 2536), 4: (1417, -1538), 5: (-1091, -1302),
+             6: (-1612, 688), 7: (173, 1935), 8: (-364, -996), 9: (3744, -2656), 10: (3143, 1148), 11: (701, 434),
+             13: (1984, 1913)}
+forest = marker["Cokiri"]
+
+
+def nearest(pts, x, z):
+    return min(pts, key=lambda p: (p[0] - x) ** 2 + (p[1] - z) ** 2)
+
+
+def quest_spot(l, q):
+    if l["name"] in SPOT_WHO:
+        return who_all[SPOT_WHO[l["name"]]][0]
+    o = q.get("Orderer", "")
+    if len(who_all.get(o, ())) == 1:
+        return who_all[o][0]
+    if q.get("Location") in marker:
+        return marker[q["Location"]]
+    for s in q["Steps"][:2]:
+        for a in s.get("Actors") or []:
+            if who_all.get(a["Name"]):
+                return who_all[a["Name"]][0]
+    return who_all[o][0] if who_all.get(o) else None
+
+
+for l in locs:
+    spot, at = None, None
+    beast = next((k for k, b in BEASTS.items() if l["name"].startswith(b)), None)
+    if l["category"] in ("Divine Beast", "Divine Beast Chest") and beast:
+        spot, at = beast_at[beast], BEASTS[beast]
+    elif l["pos"]:
+        pass
+    elif l["category"] == "Memory":
+        n = int(l["flag"][-3:])
+        if n in MEMORY_AT:
+            spot = nearest(who_all["RememberTag"], *MEMORY_AT[n])
+            assert (spot[0] - MEMORY_AT[n][0]) ** 2 + (spot[1] - MEMORY_AT[n][1]) ** 2 < 30 ** 2, l["name"]
+    elif l["category"] == "Hestu":
+        spot = nearest(who_all["Npc_OldKorok"], *forest)
+    elif l["flag"].startswith("100enemy_"):
+        spot = who_all["TwnObj_Village_Korok_DekuTree_A_01"][0]
+    elif l.get("quest") in quest_by:
+        spot = quest_spot(l, quest_by[l["quest"]])
+    if spot:
+        l["spot"], l["spot_at"] = [round(spot[0]), round(spot[1])], at or near(*spot)
+    l.pop("quest", None)
 adj = grid.adjacency()
 with open(os.path.join(os.path.dirname(OUT), "regions.json"), "w", encoding="utf8") as f:
     json.dump({"names": REGION_NAMES, "plateau": PLATEAU, "adjacent": [sorted(adj[i]) for i in range(len(REGION_NAMES))]},

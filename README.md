@@ -8,7 +8,7 @@
 <img src="docs/images/title.jpg" alt="The title screen, with ARCHIPELAGO under the logo" width="720">
 
 ![Archipelago 0.6.8+](https://img.shields.io/badge/Archipelago-0.6.8%2B-6d8be8)
-![Savage Wind 0.5.3-alpha.5](https://img.shields.io/badge/Savage%20Wind-0.5.3--alpha.5-c9a227)
+![Savage Wind 0.6.0-alpha.6](https://img.shields.io/badge/Savage%20Wind-0.6.0--alpha.6%2B-c9a227)
 ![Game version 1.9.0](https://img.shields.io/badge/BotW-1.9.0-3f8f5f)
 ![Checks](https://img.shields.io/badge/checks-up%20to%203%2C339-b5523b)
 ![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -37,84 +37,41 @@ sets everything up for you.
 
 ## Features
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
 ### Native item delivery
-Received items play the game's own item-get scene the moment they arrive, in the field, in shrines, in Divine
-Beasts. Heart Containers and Stamina Vessels play their gauge scenes. Every check gives the **Archipelago Item**
-instead of its normal reward, and it leaves the pouch on its own right after.
+Received items play the game's own item-get scene the moment they arrive: in the field, in shrines, in Divine Beasts.
+Heart Containers and Stamina Vessels play their gauge scenes. Every check gives the **Archipelago Item** instead of
+its normal reward, and it leaves the pouch on its own right after.
 
-</td>
-<td width="50%" valign="top">
-
-<img src="docs/images/item-scenes.jpg" alt="Item-get scenes for runes">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/item-scenes.jpg" alt="Link in the field, then the Paraglider arriving with its item-get scene" width="100%">
 
 ### The multiworld in your Adventure Log
-Two quests of the game's own appear once you connect, at **Multiworld: _your slot_**.
-**Archipelago Hints** (Side Quests) lists every hint about your items and your world, newest first, the moment
-it's found or bought. **Archipelago Goal** (Main Quests) shows what your goal needs and how far along you are:
-champion powers ticked off as they arrive, the Master Sword if it's needed, and your checks.
+Two quests of the game's own start once you connect, at **Multiworld: _your slot_**. **Archipelago Goal** (Main
+Quests) shows what your goal needs and how far along you are: champion powers ticked off as they arrive, the Master
+Sword if it's needed, and your checks. **Archipelago Hints** (Side Quests) lists every hint about your items and your
+world, newest first, the moment it's found or bought.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/quest-log.jpg" alt="The Archipelago Hints and Archipelago Goal quests">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/quest-log.jpg" alt="The Archipelago Goal banner, the Goal page and the Hints page of the Adventure Log" width="100%">
 
 ### Progressive runes and champions
 Remote Bomb, Stasis and the Sheikah Sensor come in two steps (the second is the **+**), Magnesis and Cryonis in
 one. The four champion abilities are progressive too, with the Champions' Ballad **+**. The Great Plateau's rune
 terminals and Purah's upgrades are checks of their own.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/rune-terminal.jpg" alt="A rune terminal giving the Archipelago Item">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/runes.jpg" alt="Remote Bomb, then Remote Bomb +, then Stasis + arriving" width="100%">
 
 ### Shop sanity
 About 500 shop slots across Hyrule: town stores, armor shops, traveling merchants, Beedle at every stable, Kilton,
-the tech labs. The first time you buy each thing a shopkeeper sells, its check goes out. You keep what you bought.
+the tech labs. Each slot sells an **Archipelago Item** at the price of what it replaces; buy it and its check goes
+out, and the shop sells its own good again.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/shop.jpg" alt="Buying Swift Carrots in Kakariko">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/shop.jpg" alt="Archipelago Items for sale in Kakariko and from Giro, a traveling merchant" width="100%">
 
 ### Region lock
-Hyrule opens region by region from the Great Plateau, one Sheikah Tower region per **Map** item. Walk toward a
-locked region and the fog thickens; step in and it whites out, and Link is back where he last stood clear of it,
-like the Lost Woods.
+Hyrule opens region by region from the Great Plateau, one Sheikah Tower region per **Map** item. Walk into a region
+whose Map you don't have and the fog thickens, then everything whites out and Link is back where he last stood clear
+of it, like the Lost Woods.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/region-lock.jpg" alt="Fog at a locked region's border">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/region-lock.jpg" alt="Link walks into a locked region, fog rises, it whites out, and he is back outside" width="100%">
 
 ### Traps that change Hyrule
 Filler and traps are announced by the game's own banner. A **Fog** or **Darkness Trap** changes all of Hyrule's
@@ -122,43 +79,20 @@ light for two minutes; **Heat** and **Cold** make the air scorching or freezing 
 **Fire Trap** sets the air itself alight. Then there's weather (Thunderstorm, Blizzard, Downpour, Midnight), the
 game's own bans (No Warping, No Saving, Hunger), Ouch, Rupee Drain and Warp.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/traps-world.jpg" alt="Fire, fog, darkness and cold traps">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/traps-world.jpg" alt="The Fire, Fog, Darkness and Cold Traps" width="100%">
 
 ### Enemies and thieves
 **Bokoblin**, **Moblin** and **Lynel Traps** make them spawn around you in the field, armed, for a while. A
 **Thief Trap** goes through your pouch and takes a weapon, bow or shield you aren't holding.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/traps-enemies.jpg" alt="Bokoblins spawned by a trap, and a thief">
-
-</td>
-</tr>
-<tr>
-<td valign="top">
+<img src="docs/images/traps-enemies.jpg" alt="The Bokoblin Trap's banner, Bokoblins around Link, and the Thief Trap" width="100%">
 
 ### Everything that was vanilla is in the pool
 The Paraglider (you leave the plateau when it arrives), the Thunder Helm, Hestu's Maracas, the
 **Progressive Master Sword** (4 with the DLC: the sword, then each Trial of the Sword's power), Hestu's Weapon / Bow /
 Shield Slots, the minigame prizes, horse gear and more.
 
-</td>
-<td valign="top">
-
-<img src="docs/images/helm.jpg" alt="The Thunder Helm and a bridle arriving">
-
-</td>
-</tr>
-</table>
+<img src="docs/images/helm.jpg" alt="The Thunder Helm and a bridle arriving" width="100%">
 
 **Also:** DeathLink, TrapLink, RingLink, in-game notifications at the bottom left, and "ARCHIPELAGO" under the logo
 on the title and loading screens.
@@ -170,7 +104,7 @@ on the title and loading screens.
 | | |
 |---|---|
 | **Game** | Your own dump of *Breath of the Wild* **1.9.0** for Switch (the Champions' Ballad is optional) |
-| **Savage Wind Recomp** | **0.5.3-alpha.5**, the normal release, with your game files set up in it |
+| **Savage Wind Recomp** | The normal release (**0.6.0-alpha.6** or newer), with your game files set up in it. Each new Savage Wind release gets its Archipelago build automatically, usually within a day |
 | **Archipelago** | **0.6.8** or later, to generate seeds and host |
 | **Python** | Only to install by hand: 3.12 with `oead`, `evfl` and `Pillow` |
 
@@ -200,6 +134,16 @@ see its step.
 4. When all four beasts are free, the **Shrine of Resurrection** lights up. Fill in the server, slot name
    and password, pick your links and press **Play**.
 
+### Updating Savage Wind
+
+When Savage Wind has a new release, **Vah Ruta** says so: click it and press **Update Savage Wind**. The launcher
+first gets the Archipelago build for the new version (a [GitHub workflow](.github/workflows/savagewind-ap.yml)
+builds one for every Savage Wind release from Savage Wind's own source and this repository's patch), then runs
+Savage Wind's own updater (checked and signed, undone if anything goes wrong). Savage Wind then opens its
+Configuration window and builds the new version's game code from your files: close it when it's done, and the
+launcher puts the Archipelago build of the new version in place. If the Archipelago build of a new version isn't out
+yet, Savage Wind is left as it is.
+
 To undo it, click Vah Rudania and **Restore the original Savage Wind**: your own `savagewind.exe` comes back and the
 overlay is turned off. The launcher contains no game files: its look (BotW's font, logo, map and the Divine Beasts'
 map icons) is read from your own dump when it opens.
@@ -208,12 +152,15 @@ map icons) is read from your own dump when it opens.
 
 ## Install by hand
 
-1. **Savage Wind with the patch.** In a [Savage Wind](https://github.com/Revivedx/SavageWindRecomp) checkout at 0.5.3-alpha.5 (commit `740b180`):
+1. **Savage Wind with the patch.** In a [Savage Wind](https://github.com/Revivedx/SavageWindRecomp) checkout at the
+   tag of the release you play (made against `v0.6.0-alpha.6`; `--3way` carries it to newer ones), from an MSYS2
+   UCRT64 shell:
    ```sh
-   git apply savagewind-archipelago.patch
-   make -j8
+   git apply --3way savagewind-archipelago.patch
+   make -j8 B=build/ap RELEASE=1 PGO=use LTO=thin build/ap/savagewind.exe
    ```
-   then set up your game files as Savage Wind's own guide says.
+   and put `build/ap/savagewind.exe` over the one in your Savage Wind folder (keep the original). `RELEASE=1`, PGO
+   and ThinLTO are how Savage Wind's own release is built: no console window, and the release's speed.
 
 2. **The apworld.** Copy [`botw.apworld`](botw.apworld) into Archipelago's `custom_worlds` folder.
 
@@ -282,8 +229,10 @@ Breath of the Wild:
 <img src="docs/images/poptracker.jpg" alt="The PopTracker pack" width="100%">
 
 `tools/poptracker.py` builds a [PopTracker](https://github.com/black-sliver/PopTracker) pack from your own game files:
-the game's Hyrule map with the regions drawn on it and every check where it is, a Regions panel, the region maps laid
-out like Hyrule, the world's logic, and Archipelago autotracking of your items, checks and options.
+the game's Hyrule map with the regions drawn on it and every check where it is (quests where whoever gives them
+stands, memories, minigames, Hestu, each Divine Beast with its chests), a Regions panel that is Hyrule in pieces,
+in colour once you have a region's Map (click one and the map zooms onto it), the world's logic, and Archipelago
+autotracking of your items, checks and options.
 
 ```sh
 .venv/Scripts/python -I tools/poptracker.py "<your Savage Wind folder>/extracted" poptracker
@@ -300,6 +249,7 @@ Put `poptracker/BotW_AP.zip` in PopTracker's `packs` folder and connect with the
 | [`worlds/botw/`](worlds/botw) | The Archipelago world: items, options, logic, location data |
 | [`tools/`](tools) | Builds the location data and the overlay from your own game files, and the PopTracker pack |
 | [`savagewind-archipelago.patch`](savagewind-archipelago.patch) | Savage Wind changes: the built-in client, item scenes, shops, region lock |
+| [`.github/workflows/savagewind-ap.yml`](.github/workflows/savagewind-ap.yml) | Builds the patched `savagewind.exe` for every new Savage Wind release, for the launcher's update |
 | [`launcher/`](launcher) | The launcher: setup logic, its window, and the PyInstaller build |
 | [`build.py`](build.py) | Zips `worlds/botw` into `botw.apworld` |
 

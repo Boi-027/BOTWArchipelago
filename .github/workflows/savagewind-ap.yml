@@ -78,6 +78,7 @@ jobs:
             mingw-w64-ucrt-x86_64-ffmpeg mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-vulkan-loader
             mingw-w64-ucrt-x86_64-shaderc mingw-w64-ucrt-x86_64-spirv-tools mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-nlohmann-json
 
       - name: The Archipelago changes on Savage Wind ${{ env.V }}
         working-directory: sw

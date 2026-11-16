@@ -154,7 +154,7 @@ map icons) is read from your own dump when it opens.
 
 1. **Savage Wind with the patch.** In a [Savage Wind](https://github.com/Revivedx/SavageWindRecomp) checkout at the
    tag of the release you play (made against `v0.6.0-alpha.6`; `--3way` carries it to newer ones), from an MSYS2
-   UCRT64 shell:
+   UCRT64 shell (Savage Wind's own build tools, plus `pacman -S mingw-w64-ucrt-x86_64-nlohmann-json` for the client):
    ```sh
    git apply --3way savagewind-archipelago.patch
    make -j8 B=build/ap RELEASE=1 PGO=use LTO=thin build/ap/savagewind.exe

@@ -182,20 +182,27 @@ on the title and loading screens.
 
 ## Install with the launcher
 
-<img src="docs/images/launcher.jpg" alt="The launcher, set up and ready to play" width="100%">
+<img src="docs/images/launcher.jpg" alt="The launcher: the Divine Beasts freed, the Shrine of Resurrection ready to play" width="100%">
+
+The launcher is the Sheikah Slate's map: every setup step is a landmark where it really is in Hyrule. Click one to
+see its step.
 
 1. Download **`BotW.AP.Launcher.exe`** from the [latest release](../../releases/latest).
-2. Start it and choose your **Savage Wind folder** (the one with `savagewind.exe`). Choose your **Archipelago** and
-   **PopTracker** folders too, if you want the world and a map tracker installed.
-3. Press **Set up**. The launcher:
-   - puts the Archipelago build of Savage Wind in place (your original stays as `savagewind.stock.exe`),
-   - builds the overlay from your own game files (a few minutes),
-   - turns it on in `launch-flags.txt`,
-   - installs `botw.apworld` into Archipelago and, if you chose PopTracker, a tracker pack made from your game files.
-4. Fill in the server, slot name and password, pick your links and press **Play**.
+2. Start it, click **Vah Ruta** and choose your **Savage Wind folder** (the one with `savagewind.exe`). Click the
+   **Master Sword** to choose your **Archipelago** and **PopTracker** folders too, if you want the world and a map
+   tracker installed.
+3. Press **Set up**. The map flies to each Divine Beast in turn, and it fills with Sheikah blue while its part runs:
+   - **Vah Rudania** puts the Archipelago build of Savage Wind in place (your original stays as `savagewind.stock.exe`),
+   - **Vah Medoh** builds the overlay from your own game files (a minute or two),
+   - **Vah Naboris** turns it on in `launch-flags.txt`,
+   - the **Master Sword** installs `botw.apworld` into Archipelago and, if you chose PopTracker, a tracker pack made
+     from your game files.
+4. When all four beasts are free, the **Shrine of Resurrection** lights up. Fill in the server, slot name
+   and password, pick your links and press **Play**.
 
-**Restore original** puts your own `savagewind.exe` back and turns the overlay off. The launcher contains no game
-files: its look (BotW's font, hearts, map and logo) is read from your own dump when it opens.
+To undo it, click Vah Rudania and **Restore the original Savage Wind**: your own `savagewind.exe` comes back and the
+overlay is turned off. The launcher contains no game files: its look (BotW's font, logo, map and the Divine Beasts'
+map icons) is read from your own dump when it opens.
 
 ---
 

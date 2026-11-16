@@ -15,7 +15,7 @@ import runpy
 import shutil
 import sys
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SW_VERSION = "0.5.3-alpha.5"
 STOCK_EXE_SHA = "d40806507ee635203740d9b62896d7989d9388db2bdc802f8d546967dc162749"  # (Savage Wind 0.5.3-alpha.5's)
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
@@ -186,38 +186,45 @@ def build_overlay(sw, log, step):
         f.write(VERSION)
 
 
-def setup(cfg, log, step):
+def setup(cfg, log, step=lambda key, f: None):
+    """step(key, fraction): how far each status() step is (the window fills its landmark as it goes)"""
     sw = cfg["sw"]
     st = status(cfg)
     if st["sw"][0] != "ok":
         raise RuntimeError(st["sw"][1])
     if st["exe"][0] != "ok":
+        step("exe", 0.2)
         log("Putting the Archipelago build of Savage Wind in place")
         exe, keep = os.path.join(sw, "savagewind.exe"), os.path.join(sw, "savagewind.stock.exe")
         if not os.path.exists(keep):
             shutil.copy2(exe, keep)
         shutil.copy2(patched_exe(), exe)
+    step("exe", 1)
     if st["overlay"][0] != "ok":
         log("Building the overlay from your game files")
-        build_overlay(sw, log, lambda f: step(0.05 + 0.75 * f))
-    step(0.82)
+        build_overlay(sw, log, lambda f: step("overlay", f))
+    step("overlay", 1)
     if st["flags"][0] != "ok":
+        step("flags", 0.5)
         log("Turning the overlay on (launch-flags.txt)")
         lines = [l for l in read_flags(sw) if not l.startswith("SAVAGEWIND_ROMFS_OVERLAY=")]
         write_flags(sw, lines + [flag_line(sw)])
+    step("flags", 1)
     if st["apworld"][0] == "todo":
+        step("apworld", 0.3)
         log("Installing botw.apworld into Archipelago")
         dest = os.path.join(cfg["archipelago"], "custom_worlds")
         os.makedirs(dest, exist_ok=True)
         shutil.copy2(os.path.join(PAYLOAD, "botw.apworld"), dest)
-    step(0.88)
+    step("apworld", 1)
     if st["poptracker"][0] == "todo":
+        step("poptracker", 0.05)
         log("Making the PopTracker pack")
         out = os.path.join(sw, "ap_poptracker")
         run_tool("poptracker.py", [os.path.join(sw, "extracted"), out], log)
         os.makedirs(os.path.join(cfg["poptracker"], "packs"), exist_ok=True)
         shutil.copy2(os.path.join(out, "BotW_AP.zip"), os.path.join(cfg["poptracker"], "packs", "BotW_AP.zip"))
-    step(1)
+    step("poptracker", 1)
     log("All set.")
 
 

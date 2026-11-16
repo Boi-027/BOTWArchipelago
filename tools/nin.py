@@ -1,10 +1,18 @@
-"""Minimal readers for Nintendo Switch BotW formats: Yaz0, SARC, BYML (little-endian). Read-only, no dependencies."""
+"""Minimal readers for Nintendo Switch BotW formats: Yaz0, SARC, BYML (little-endian). Read-only, no dependencies
+(oead's Yaz0, when it is installed, only makes it faster)."""
 import struct
+
+try:
+    from oead import yaz0 as _oead_yaz0
+except ImportError:
+    _oead_yaz0 = None
 
 
 def yaz0(data: bytes) -> bytes:
     if data[:4] != b"Yaz0":
         return data
+    if _oead_yaz0:  # (native: seconds faster on the big archives)
+        return bytes(_oead_yaz0.decompress(data))
     size = struct.unpack_from(">I", data, 4)[0]
     out = bytearray()
     i = 16

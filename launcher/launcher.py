@@ -15,7 +15,7 @@ import runpy
 import shutil
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SW_VERSION = "0.5.3-alpha.5"
 STOCK_EXE_SHA = "d40806507ee635203740d9b62896d7989d9388db2bdc802f8d546967dc162749"  # (Savage Wind 0.5.3-alpha.5's)
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
@@ -177,7 +177,8 @@ def build_overlay(sw, log, step):
     logo = os.path.join(PAYLOAD, "archipelago.png")
     tools = [("title_overlay.py", [romfs, out, VERSION]), ("ap_item.py", [romfs, out, logo]),
              ("strip_rewards.py", [ex, out]), ("shop_sanity.py", [ex, out]), ("rune_items.py", [romfs, out]),
-             ("quest_rewards.py", [ex, out]), ("give_trigger.py", [ex, out]), ("logo_overlay.py", [romfs, out])]
+             ("quest_rewards.py", [ex, out]), ("give_trigger.py", [ex, out]), ("quest_log.py", [ex, out]),
+             ("logo_overlay.py", [romfs, out])]  # (tools/build_overlay.py's order)
     for i, (name, args) in enumerate(tools):
         step(i / len(tools))
         run_tool(name, args, log)

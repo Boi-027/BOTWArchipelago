@@ -415,7 +415,7 @@ class BotWContext(CommonContext):
         port = self.config["port"]
         weather = {"thunderstorm": "thunderstorm", "blizzard": "heavy_snow", "downpour": "heavy_rain"}
         prohibit = {"no_warp": ("WarpProhibition", 90), "no_save": ("SaveProhibition", 90),
-                    "no_eat": ("EatProhibition", 90)}
+                    "no_eat": ("EatProhibition", 90), "bloodmoon": ("WM_BloodyDay", 60)}  # (with midnight: below)
         # the overlay's environment and enemy traps: a want flag, then its sync event (tools/give_trigger.py SYNC)
         wants = {"heat": ("AP_Env_Heat", 60), "cold": ("AP_Env_Cold", 60), "fire": ("AP_Env_Fire", 8),
                  "fog": ("AP_Env_Fog", 120), "dark": ("AP_Env_Dark", 120), "bokoblins": ("AP_Spawn_Bokoblin", 120),
@@ -433,6 +433,8 @@ class BotWContext(CommonContext):
         elif kind in prohibit:  # (a flag for a while: the game's prohibitions, the overlay's weather tags and spawns;
             flag, secs = prohibit[kind]  # not saved, a load ends them too)
             await self.sw.cmd(f"gdt {flag} 1", port)
+            if kind == "bloodmoon":  # (the world's Blood Moon night: its scene as the clock passes midnight)
+                await self.sw.cmd("time set 23.9", port)
 
             async def lift():
                 await asyncio.sleep(secs)

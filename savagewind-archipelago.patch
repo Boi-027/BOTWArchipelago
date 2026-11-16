@@ -1148,10 +1148,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..d099dfa
+index 0000000..8abe01a
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,831 @@
+@@ -0,0 +1,834 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -1456,6 +1456,8 @@ index 0000000..d099dfa
 +//    The map's link tags only see a flag an event changed: these set AP_Want_<flag>, and the overlay's event copies
 +//    every want onto its flag (its sync entry, AP_Q<SYNC_Q>: env_sync below), when one goes on and when it goes off
 +//  - thief: one weapon, bow or shield Link isn't holding leaves the pouch (runtime/ap_event.c)
++//  - bloodmoon: the game's own Blood Moon - its night's flag (WM_BloodyDay, read by the world's code: off again after a
++//    minute, so it isn't every night) and the clock just before midnight: its scene, and every monster slain returns
 +std::map<std::string, double> g_prohibit_until;  // (flag: when it goes off)
 +bool g_env_sync, g_env_syncing;  // (a want changed: the overlay's event is to copy them; it is doing so)
 +const char *const SYNC_Q = "128";  // (botw_ap tools/give_trigger.py SYNC)
@@ -1467,7 +1469,7 @@ index 0000000..d099dfa
 +        {"heat", "AP_Want_AP_Env_Heat", 60}, {"cold", "AP_Want_AP_Env_Cold", 60},  // (they hurt: a minute)
 +        {"fire", "AP_Want_AP_Env_Fire", 8}, {"fog", "AP_Want_AP_Env_Fog", 120}, {"dark", "AP_Want_AP_Env_Dark", 120},
 +        {"bokoblins", "AP_Want_AP_Spawn_Bokoblin", 120}, {"moblins", "AP_Want_AP_Spawn_Moblin", 90},
-+        {"lynels", "AP_Want_AP_Spawn_Lynel", 60}};
++        {"lynels", "AP_Want_AP_Spawn_Lynel", 60}, {"bloodmoon", "WM_BloodyDay", 60}};
 +    for (auto &w : WEATHER)
 +        if (kind == w.kind)
 +            for (int i = 0; i < WEATHER_COUNT; i++)
@@ -1482,6 +1484,7 @@ index 0000000..d099dfa
 +            g_env_sync |= !strncmp(p.flag, "AP_Want_", 8);
 +        }
 +    if (kind == "midnight") test_warp_set_hour(0);
++    else if (kind == "bloodmoon") test_warp_set_hour(23.9f);
 +    else if (kind == "thief") ap_thief_request();
 +    else if (kind == "ouch") {
 +        uint64_t a = rt_link_life_addr();

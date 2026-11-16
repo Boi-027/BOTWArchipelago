@@ -77,6 +77,7 @@ BANNER_TEXT = {
     "Moblin Trap": ("Moblins are on the prowl!", []),
     "Lynel Trap": ("Lynels are on the hunt!", []),
     "Thief Trap": ("A thief went through your pouch!", []),
+    "Blood Moon Trap": ("The Blood Moon is rising...", []),
 }
 
 # The environment traps: the game's own ChangeWeatherTag (what the overworld's mountains, the desert's storm and the

@@ -141,6 +141,8 @@ ITEMS = {
     "Moblin Trap": (IC.trap, ["!trap moblins"], None, 0),
     "Lynel Trap": (IC.trap, ["!trap lynels"], None, 0),
     "Thief Trap": (IC.trap, ["!trap thief"], None, 0),
+    # the game's own Blood Moon: its scene at midnight, and every monster slain comes back
+    "Blood Moon Trap": (IC.trap, ["!trap bloodmoon"], None, 0),
 }
 
 # The game's own banner (its centred message, as Waikuteru's randomizer shows them) for every item without an
@@ -161,7 +163,7 @@ BANNERS = [
     "Blizzard Trap", "Downpour Trap", "No Warping Trap", "No Saving Trap", "Hunger Trap", "Ouch Trap",
     "Rupee Drain Trap", "Warp Trap", "Red Rupee", "Purple Rupee", "Silver Rupee", "Full Recovery",
     "Heat Trap", "Cold Trap", "Fire Trap", "Fog Trap", "Darkness Trap", "Bokoblin Trap", "Moblin Trap", "Lynel Trap",
-    "Thief Trap",
+    "Thief Trap", "Blood Moon Trap",
 ]
 for _i, _n in enumerate(BANNERS):
     _c, _acts, _copies, _w = ITEMS[_n]
@@ -173,5 +175,8 @@ CHAMPION_POWERS = ["Progressive Mipha's Grace", "Progressive Daruk's Protection"
 RUNES = ["Progressive Remote Bomb", "Magnesis", "Progressive Stasis", "Cryonis"]  # (what Link needs off the plateau)
 MAPS = [n for n in ITEMS if n.endswith(" Map")]  # (region lock only)
 DLC_PROGRESSIVE = CHAMPION_POWERS + ["Progressive Master Sword"]  # (their later copies are DLC content)
-TRAPS = [n for n, v in ITEMS.items() if v[0] == IC.trap]
+# The enemy traps (Bokoblin, Moblin, Lynel) are left out of seeds and TrapLink - the overworld's spawns rarely pick
+# them (tested 2026-11-16); the Blood Moon Trap took their place. Still defined: item ids and older seeds keep working
+ENEMY_TRAPS = {"Bokoblin Trap", "Moblin Trap", "Lynel Trap"}
+TRAPS = [n for n, v in ITEMS.items() if v[0] == IC.trap and n not in ENEMY_TRAPS]
 FILLER = {n: v[3] for n, v in ITEMS.items() if v[2] is None and v[0] != IC.trap}

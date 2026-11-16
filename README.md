@@ -81,11 +81,11 @@ game's own bans (No Warping, No Saving, Hunger), Ouch, Rupee Drain and Warp.
 
 <img src="docs/images/traps-world.jpg" alt="The Fire, Fog, Darkness and Cold Traps" width="100%">
 
-### Enemies and thieves
-**Bokoblin**, **Moblin** and **Lynel Traps** make them spawn around you in the field, armed, for a while. A
-**Thief Trap** goes through your pouch and takes a weapon, bow or shield you aren't holding.
+### Blood Moons and thieves
+A **Blood Moon Trap** is the game's own Blood Moon: the clock runs to midnight, the red moon rises, and every monster
+you've slain comes back. A **Thief Trap** goes through your pouch and takes a weapon, bow or shield you aren't holding.
 
-<img src="docs/images/traps-enemies.jpg" alt="The Bokoblin Trap's banner, Bokoblins around Link, and the Thief Trap" width="100%">
+<img src="docs/images/traps-bloodmoon.jpg" alt="The Blood Moon Trap's banner, the red moon rising, its scene, and the Thief Trap" width="100%">
 
 ### Everything that was vanilla is in the pool
 The Paraglider (you leave the plateau when it arrives), the Thunder Helm, Hestu's Maracas, the

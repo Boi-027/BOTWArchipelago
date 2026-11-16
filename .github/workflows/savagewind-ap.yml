@@ -57,6 +57,9 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
+      - name: Files as they are in git (Windows runners turn LF into CRLF; the patch is LF)
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           path: ap
@@ -80,6 +83,7 @@ jobs:
         working-directory: sw
         run: |
           git config user.email "build@localhost" && git config user.name "build"
+          git update-index -q --refresh || true  # (checked out by another git: its own look at the files)
           git apply --3way --whitespace=nowarn ../ap/savagewind-archipelago.patch
           git status --short
 

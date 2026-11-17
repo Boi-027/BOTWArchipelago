@@ -1215,10 +1215,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..2aac281
+index 0000000..35b3f67
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,1008 @@
+@@ -0,0 +1,1009 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -1892,8 +1892,9 @@ index 0000000..2aac281
 +        int copy = 0;  // (which copy of this item this is: "@<k> <action>" is only for the k-th, progressive items)
 +        for (int i = 0; i <= g_given; i++) copy += g_items[i].value("item", (int64_t)0) == id;
 +        bool by_event = false, wrote = false;  // (the scene gave it, its count with it; it wrote game data to keep)
-+        // filler and useful items: no banner or scene (the chat box says them), unless the scene is all that gives it
-+        bool quiet = !(it.value("flags", 0) & 5);
++        // only progression items stop Link for a banner or scene; the rest, traps and Korok seeds (a scene for each of
++        // many) are given quietly - the chat box says them - unless the scene is all that gives it
++        bool quiet = !(it.value("flags", 0) & 1) || steps.dump().find("Obj_KorokNuts") != std::string::npos;
 +        auto step_of = [&](int i) {  // (step i for this copy, without its "@k ", or "" when it's another copy's)
 +            std::string s = steps[i].get<std::string>();
 +            if (s[0] != '@') return s;

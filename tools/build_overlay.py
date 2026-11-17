@@ -19,7 +19,7 @@ ap = sys.argv[2] if len(sys.argv) > 2 else r"C:\ProgramData\Archipelago"
 ex, out = os.path.join(sw, "extracted"), os.path.join(sw, "ap_overlay")
 if os.path.isdir(out):
     shutil.rmtree(out)  # (only ever our own output)
-for script, args in (("title_overlay.py", [os.path.join(ex, "romfs"), out, "0.4.4"]),
+for script, args in (("title_overlay.py", [os.path.join(ex, "romfs"), out, "0.4.5"]),
                      ("ap_item.py", [os.path.join(ex, "romfs"), out, os.path.join(ap, "data", "icon.png")]),
                      ("strip_rewards.py", [ex, out])):
     subprocess.run([sys.executable, "-I", os.path.join(here, script)] + args, check=True)

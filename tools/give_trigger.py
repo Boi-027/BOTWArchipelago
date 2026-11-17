@@ -39,6 +39,9 @@ ITEMS = ["Obj_HeroSoul_Zora", "Obj_HeroSoul_Rito", "Obj_HeroSoul_Goron", "Obj_He
          "Obj_DLC_HeroSoul_Zora", "Obj_DLC_HeroSoul_Rito", "Obj_DLC_HeroSoul_Goron", "Obj_DLC_HeroSoul_Gerudo",
          "Obj_RemoteBomb", "Obj_RemoteBombLv2", "Obj_StopTimer", "Obj_StopTimerLv2", "Obj_SheikSensor",
          "Obj_SheikSensorLv2", "Obj_Magnetglove", "Obj_IceMaker"]
+# the runes the plateau's terminals and Purah download into the Slate (Demo003_0, Demo032_0): ItemType, IsPowerUp
+RUNE_DOWNLOAD = {"Obj_RemoteBomb": (0, False), "Obj_RemoteBombLv2": (0, True), "Obj_Magnetglove": (1, False),
+                 "Obj_StopTimer": (2, False), "Obj_StopTimerLv2": (2, True), "Obj_IceMaker": (3, False)}
 DEMOS = len(ITEMS)  # (worlds/botw/items.py: "!msg <n>" counts on from here)
 assert DEMOS == 32, "worlds/botw/items.py's DEMOS"
 
@@ -246,7 +249,18 @@ def dispatch_flow():
         elif actor.startswith("Obj_DLC_HeroSoul_"):  # (the ability it improves leaves the pouch, as in Demo622)
             after = fl.action(esa, "Demo_DeletePorchItemInEquip", {"IsWaitFinish": True, "DeleteNum": -1,
                               "PorchItemName": actor.replace("DLC_", "")}, off)
-        give = fl.subflow("GetDemo", "GetItemByName", {"CheckTargetActorName": actor, "IsInvalidOpenPouch": False}, after)
+        if actor in RUNE_DOWNLOAD:  # (the item-get scene only sets a rune's flag: the Slate's download puts it in the pouch)
+            kind, plus = RUNE_DOWNLOAD[actor]  # (as Demo003_0 has it: the download, a moment, the item menu it opened closed)
+            give = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsDownloadDemo"}, fl.action(
+                esa, "Demo_OpenItemDownloadDemo", {"IsWaitFinish": True, "ItemType": kind, "IsEquip": True,
+                                                   "IsPowerUp": plus, "IsPlayerClose": False},
+                fl.action(esa, "Demo_WaitFrame", {"IsWaitFinish": True, "Frame": 70},
+                          fl.action(esa, "Demo_CloseItemMenu", {"IsWaitFinish": True},
+                                    fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsGet_" + actor},
+                                              after)))))
+        else:
+            give = fl.subflow("GetDemo", "GetItemByName", {"CheckTargetActorName": actor, "IsInvalidOpenPouch": False},
+                              after)
         nxt_check = fl.switch(esa, "CheckFlag", {"FlagName": QFLAGS[i]}, {1: give, 0: nxt_check})
     for k, (name, text, acts) in reversed(list(enumerate(banners()))):
         i = DEMOS + k

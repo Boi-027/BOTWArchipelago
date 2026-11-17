@@ -1215,10 +1215,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..0f3599f
+index 0000000..2aac281
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,1007 @@
+@@ -0,0 +1,1008 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -2180,6 +2180,7 @@ index 0000000..0f3599f
 +bool ap_overlay_active(void) {
 +    static std::once_flag started;
 +    std::call_once(started, [] { std::thread(net_thread).detach(); std::thread(tick_thread).detach(); });
++    if (ap_region_fog() > 0.004f) return true;  // (the region lock's fog: every frame, not only while a note is up)
 +    std::lock_guard<std::mutex> l(g_note_lock);
 +    return !g_notes.empty() || g_chat_open.load();
 +}

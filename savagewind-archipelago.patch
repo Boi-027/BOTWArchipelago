@@ -2340,7 +2340,7 @@ index 2ed8c2a..5b818c7 100644
      if (g_cap_row && bind_capture_active(&d, &s, &ms)) cap_slot_was = s;
      if (g_cap_row && !bind_capture_active(&d, &s, &ms)) {
 diff --git a/runtime/ui/menu.mm b/runtime/ui/menu.mm
-index 852ede0..301c3a3 100644
+index 852ede0..bf0a02c 100644
 --- a/runtime/ui/menu.mm
 +++ b/runtime/ui/menu.mm
 @@ -167,7 +167,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
@@ -2432,17 +2432,20 @@ index 852ede0..301c3a3 100644
  static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bool *gyro_show = NULL, GyroScene *gyro = NULL) {
      float box[4];
      GyroScene gs;
-@@ -2192,7 +2213,8 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+@@ -2191,8 +2212,10 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+     bool gyro_on = pc_gyro_scene_view(gyro ? gyro : &gs);
      if (pointer_hover) *pointer_hover = hover;
      if (gyro_show) *gyro_show = gyro_on;
-     return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || gyro_on || hover ||
+-    return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || gyro_on || hover ||
 -           g_settings.perf_overlay != PERF_OFF || act_log_enabled() || quick_inventory_sort_hint() || quick_drop_hint_state();
-+           g_settings.perf_overlay != PERF_OFF || act_log_enabled() || quick_inventory_sort_hint() || quick_drop_hint_state() ||
-+           ap_overlay_active();
++    // (Archipelago first: its call also starts the client, so nothing before it may skip it - the FPS counter did)
++    return ap_overlay_active() || g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || gyro_on ||
++           hover || g_settings.perf_overlay != PERF_OFF || act_log_enabled() || quick_inventory_sort_hint() ||
++           quick_drop_hint_state();
  }
  
  bool menu_render_needed(void) { return menu_draws(); }
-@@ -2275,6 +2297,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
+@@ -2275,6 +2298,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
      }
  
      if (g_settings.perf_overlay != PERF_OFF) perf_overlay_draw(io, scale);

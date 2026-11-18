@@ -237,7 +237,7 @@ index 0000000..abb926e
 +}
 diff --git a/runtime/ap_region.c b/runtime/ap_region.c
 new file mode 100644
-index 0000000..5479b06
+index 0000000..7e137e9
 --- /dev/null
 +++ b/runtime/ap_region.c
 @@ -0,0 +1,164 @@
@@ -375,10 +375,10 @@ index 0000000..5479b06
 +                rl.phase = 1, rl.frames = 0, rl.blocked = r;
 +                LOG("[ap] regions: Link walked into %s\n", REGION_NAMES[r]);
 +            }
-+            target = 0.85f;  // (put there by a load: the fog only)
++            target = 0.4f;  // (put there by a load: the fog only - light, so he can find his way out)
 +        } else {
 +            float near = locked_near(p[0], p[2]);
-+            target = (1 - near) * 0.92f;
++            target = (1 - near) * 0.35f;  // (a light haze that thickens: he must still see where he goes)
 +            if (near >= 0.35f && rl.steady >= 10) memcpy(rl.safe, p, sizeof p), rl.have_safe = true;  // (25 m clear, on the ground)
 +        }
 +    }

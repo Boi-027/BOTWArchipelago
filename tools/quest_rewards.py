@@ -124,6 +124,9 @@ def fixed_effects(flow):
             out[e.name] = ("Runes", "never " + d.params.data["FlagName"])
         elif type(d).__name__ == "SubFlowEvent" and (d.res_flowchart_name, d.entry_point_name) ==                 ("OperationGuide", "Guide_ItemUse") and flow.name == "Demo003_0":
             out[e.name] = ("Runes", "skip rune tips")
+        elif type(d).__name__ == "SwitchEvent" and str(d.actor_query.v) == "CheckFlag" and flow.name == "Demo004_0" and \
+                (d.params.data.get("FlagName") or "") in ("IsGet_Obj_SheikSensor", "IsStart_Obj_SheikSensor"):
+            out[e.name] = ("Runes", "skip sensor tour")
     for e in flow.flowchart.events:
         if str(give_scene(e)).startswith("Obj_DLC_HeroSoul_"):  # (the Champions' Ballad's "+": an item now)
             out[e.name] = ("BalladOfHeroes", give_scene(e))
@@ -237,6 +240,10 @@ def main(ex, out):
                     for x in f.flowchart.events:
                         if hasattr(x.data, "nxt") and x.data.nxt.v is e:
                             x.data.nxt = make_index(e.data.nxt.v)
+                elif item == "skip sensor tour":
+                    # (a tower, Demo004_0: the first one gave the sensor and showed it off - its gauge waits for a
+                    # sensor Link may not have, so the event never ended. Always the way for one he already has)
+                    e.data.cases = {c: e.data.cases[1] for c in e.data.cases}
                 elif item == "rune download":
                     # the rune's screen -> the Archipelago Item's scene, then what came after (a plateau terminal: after
                     # Zelda's words about the rune, which close that screen)

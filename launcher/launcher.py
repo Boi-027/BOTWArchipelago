@@ -20,7 +20,7 @@ import tempfile
 import time
 import urllib.request
 
-VERSION = "0.4.5"
+VERSION = "0.4.6"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
 RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 

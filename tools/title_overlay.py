@@ -1,7 +1,7 @@
 """Builds a RomFS overlay folder that adds an "Archipelago <version>" line to the title screen's bottom-right corner,
 from your own game files. Savage Wind loads it with the launch option SAVAGEWIND_ROMFS_OVERLAY=<that folder>.
 
-    python -I tools/title_overlay.py "<Savage Wind folder>/extracted/romfs" "<Savage Wind folder>/ap_overlay" 0.4.5
+    python -I tools/title_overlay.py "<Savage Wind folder>/extracted/romfs" "<Savage Wind folder>/ap_overlay" 0.4.6
 
 The overlay holds modified game files: it's for your own machine, never share it.
 """

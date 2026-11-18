@@ -20,7 +20,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "0.4.7"
+VERSION = "0.4.8"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
 RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 

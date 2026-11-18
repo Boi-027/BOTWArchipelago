@@ -49,6 +49,12 @@ What the room says shows at the bottom left, in the game's own font: your items,
 Press **Enter** out in the world to open the chat: scroll the log with the mouse wheel or PgUp / PgDn, type to
 talk to everyone, or ask for a hint with `!hint <item>`. **Esc** closes it.
 
+### Map tracker
+Open the map while connected and every check you still have to get has an icon on it: shrines, Korok seeds, chests,
+shops, quests, towers and minigames. An icon goes away as soon as its check is sent, checks in regions still locked
+are left off, and pointing the mouse at an icon names the check. The icons are made from your own game files at
+**Set up** (`tools/map_icons.py`); without them the tracker shows coloured dots.
+
 ### The multiworld in your Adventure Log
 Two quests of the game's own start once you connect, at **Multiworld: _your slot_**. **Archipelago Goal** (Main
 Quests) shows what your goal needs and how far along you are: champion powers ticked off as they arrive, the Master

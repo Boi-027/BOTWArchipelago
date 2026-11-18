@@ -9,7 +9,6 @@ Build the .exe:   botw_ap/.venv/Scripts/python launcher/build_launcher.py
 """
 import contextlib
 import hashlib
-import io
 import json
 import os
 import runpy
@@ -18,9 +17,10 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import urllib.request
 
-VERSION = "0.4.6"
+VERSION = "0.4.7"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
 RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 
@@ -294,20 +294,38 @@ def status(cfg):
     return out
 
 
-def run_tool(name, args, log):
-    """one of the overlay tools, here in this process (they are scripts: run as __main__)"""
-    log(f"  {name}")
-    old_argv, old_path = sys.argv, list(sys.path)
+def run_tool_here(out, name, args):
+    """(--run-tool: run_tool's process) the tool as __main__, what it prints and any error into the file `out`"""
     sys.argv = [name] + args
     sys.path.insert(0, TOOLS)
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf):
+    with open(out, "w", encoding="utf8") as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+        try:
             runpy.run_path(os.path.join(TOOLS, name), run_name="__main__")
+            return 0
+        except SystemExit as e:
+            return e.code if isinstance(e.code, int) else int(e.code is not None)
+        except BaseException:
+            traceback.print_exc()
+            return 1
+
+
+def run_tool(name, args, log):
+    """one of the overlay tools (scripts, run as __main__), in a process of its own at a lower priority: in the window's
+    their work held Python's lock and the window stuttered all through Set up"""
+    log(f"  {name}")
+    me = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, os.path.abspath(__file__)]
+    flags = 0x08000000 | 0x00004000 if os.name == "nt" else 0  # (CREATE_NO_WINDOW, BELOW_NORMAL_PRIORITY_CLASS)
+    fd, out = tempfile.mkstemp(suffix=".log")
+    os.close(fd)
+    try:
+        code = subprocess.run(me + ["--run-tool", out, name] + args, creationflags=flags).returncode
+        lines = open(out, encoding="utf8", errors="replace").read().splitlines()
     finally:
-        sys.argv, sys.path[:] = old_argv, old_path
-        for line in buf.getvalue().splitlines()[-3:]:
-            log("    " + line)
+        os.remove(out)
+    for line in lines[-3:]:
+        log("    " + line)
+    if code:
+        raise RuntimeError(f"{name} stopped: {lines[-1] if lines else f'exit code {code}'}")
 
 
 def build_overlay(sw, log, step):
@@ -319,7 +337,7 @@ def build_overlay(sw, log, step):
     tools = [("title_overlay.py", [romfs, out, VERSION]), ("ap_item.py", [romfs, out, logo]),
              ("strip_rewards.py", [ex, out]), ("shop_sanity.py", [ex, out]), ("rune_items.py", [romfs, out]),
              ("quest_rewards.py", [ex, out]), ("give_trigger.py", [ex, out]), ("quest_log.py", [ex, out]),
-             ("logo_overlay.py", [romfs, out])]  # (tools/build_overlay.py's order)
+             ("map_icons.py", [ex, out]), ("logo_overlay.py", [romfs, out])]  # (tools/build_overlay.py's order)
     for i, (name, args) in enumerate(tools):
         step(i / len(tools))
         run_tool(name, args, log)
@@ -410,6 +428,8 @@ def write_ini(sw, values):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 3 and sys.argv[1] == "--run-tool":  # (run_tool's process: no window)
+        sys.exit(run_tool_here(sys.argv[2], sys.argv[3], sys.argv[4:]))
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from ui import App  # (the window: launcher/ui.py)
     app = App()

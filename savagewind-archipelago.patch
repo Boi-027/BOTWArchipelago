@@ -237,10 +237,10 @@ index 0000000..abb926e
 +}
 diff --git a/runtime/ap_region.c b/runtime/ap_region.c
 new file mode 100644
-index 0000000..4719ae4
+index 0000000..f704b43
 --- /dev/null
 +++ b/runtime/ap_region.c
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,176 @@
 +// Archipelago's region lock (worlds/botw Region Lock; botw_ap tools/regions.py): Hyrule opens region by region, the
 +// areas of its 15 Sheikah Towers - the game's own grid, Ecosystem/MapTower.sbeco in Bootup.pack: rows `step` metres
 +// apart from z = -4000, each a list of (region, length) runs across the map from x = -5000. AP_RegionLock on (the client
@@ -372,7 +372,11 @@ index 0000000..4719ae4
 +    uint64_t evt = g_site.event_mgr ? LD64(g_site.event_mgr) : 0;
 +    if ((evt && LD64(evt + 0x1d2b8)) || (g_site.pause_state && LD32(g_site.pause_state))) return;  // (as it was)
 +    float p[3] = {*(float *)(uintptr_t)(pinfo + 0x88), *(float *)(uintptr_t)(pinfo + 0x8c), *(float *)(uintptr_t)(pinfo + 0x90)};
-+    bool walked = rl.have_prev && fabsf(p[0] - rl.prev[0]) < 6 && fabsf(p[2] - rl.prev[2]) < 6;  // (not a load's jump)
++    // walked in: from open ground a step away the frame before. Not a load's jump, and not the place an item scene's
++    // start reads for a moment (Link was turned back from Akkala standing at the Great Plateau, then the scene's end
++    // put him back: there was never a frame on open ground next to it)
++    bool walked = rl.have_prev && fabsf(p[0] - rl.prev[0]) < 6 && fabsf(p[2] - rl.prev[2]) < 6 &&
++                  region_open(region_at(rl.prev[0], rl.prev[2]));
 +    rl.steady = rl.have_prev && fabsf(p[1] - rl.prev[1]) < 0.05f ? rl.steady + 1 : 0;  // (on the ground: not in the air)
 +    float target = 0;
 +    if (rl.phase == 0) {
@@ -1144,7 +1148,7 @@ index 8449796..d070754 100644
      control_register(cmds, (int)(sizeof cmds / sizeof *cmds));
  }
 diff --git a/runtime/nvn/vulkan/exec.c b/runtime/nvn/vulkan/exec.c
-index cb5fbc5..b2239a4 100644
+index cb5fbc5..ad8eda5 100644
 --- a/runtime/nvn/vulkan/exec.c
 +++ b/runtime/nvn/vulkan/exec.c
 @@ -4868,6 +4868,7 @@ static bool map_capture_patch(const float *g, uint64_t size, float shape, VkDesc
@@ -1155,18 +1159,33 @@ index cb5fbc5..b2239a4 100644
  static bool hud_patch(uint64_t addr, uint64_t size, VkDescriptorBufferInfo *out) {
      static int off = -1;
      if (off < 0) off = getenv("SAVAGEWIND_NO_HUD_FIX") != NULL;
-@@ -4878,6 +4879,11 @@ static bool hud_patch(uint64_t addr, uint64_t size, VkDescriptorBufferInfo *out)
+@@ -4878,6 +4879,13 @@ static bool hud_patch(uint64_t addr, uint64_t size, VkDescriptorBufferInfo *out)
      bool map_layout = shape >= 0.75f && shape < 1;
      bool tall_map = map_layout && (hud_scope.kind == UI_LAYOUT_MENU ||
                      (hud_scope.kind == UI_LAYOUT_NONE && output_tall_map(shape)));
 +    // Archipelago's map tracker (runtime/ui/ap_client.mm ap_map_tile): AppMap's terrain tiles as they go into its
-+    // 1500x720 capture (that projection), each a square at (scale, offset); not the capture's 1:1 backdrop
++    // 1500x720 capture (that projection), each a square at (scale, offset); not the capture's backdrop, at scale 1 in
++    // the middle (zoomed all the way in the tiles go past scale 1 too)
 +    if (size >= 112 && fabsf(g[0] - 2.0f / 1500) < 1e-6f && fabsf(g[5] - 2.0f / 720) < 1e-6f && g[16] > 0.005f &&
-+        g[16] < 0.99f && g[16] == g[21] && !g[17] && !g[18] && !g[20] && !g[22] && framepace_map_ui())
++        g[16] < 50 && !(g[16] == 1 && !g[19] && !g[23]) && g[16] == g[21] && !g[17] && !g[18] && !g[20] && !g[22] &&
++        framepace_map_ui())
 +        ap_map_tile(g[16], g[19], g[23]);
      // The terrain capture is prepared before AppMap switches presentation. Its fixed target
      // must already contain the taller view on the first visible map frame.
      if (map_layout && map_capture_patch(g, size, shape, out)) return true;
+diff --git a/runtime/pc_cursor.c b/runtime/pc_cursor.c
+index fbc98fc..d9d99a6 100644
+--- a/runtime/pc_cursor.c
++++ b/runtime/pc_cursor.c
+@@ -116,6 +116,8 @@ extern bool menu_cursor_free(void);
+ bool pc_cursor_active(void) { return enabled() && active && (focused || pointer_test()) && !menu_cursor_free(); }
+ bool pc_cursor_preview_active(void) { return pc_cursor_active()&&preview_available; }
+ bool pc_cursor_map_navigation(void) { return pc_cursor_active() && map_canvas_active && !pointer_gamepad_input; }
++// (the Archipelago map tracker, runtime/ui/ap_client.mm: the mouse, not a controller, was used last)
++bool pc_cursor_mouse_last(void) { return !pointer_gamepad_input; }
+ bool pc_cursor_sensor_active(void) { return pc_cursor_map_navigation(); }
+ bool pc_cursor_hide_system(void) {
+     return (pc_cursor_active()&&quick_wheel_only)||
 diff --git a/runtime/rupees.c b/runtime/rupees.c
 index b989854..abdc0a2 100644
 --- a/runtime/rupees.c
@@ -1247,10 +1266,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..e247e3b
+index 0000000..90cbd47
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,1297 @@
+@@ -0,0 +1,1320 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -1320,6 +1339,8 @@ index 0000000..e247e3b
 +unsigned char *rt_image_rgba(const char *path, int *w, int *h);  // runtime/imageload.c
 +void rt_image_free(void *px);
 +uint64_t vk_imgui_texture_rgba(const void *rgba, int w, int h);  // runtime/nvn/vulkan/imgui_glue.cpp
++bool menu_mouse_pos(float *x, float *y);                // runtime/ui/menu.mm
++bool pc_cursor_mouse_last(void);                        // runtime/pc_cursor.c
 +}
 +
 +using json = nlohmann::json;
@@ -2266,6 +2287,19 @@ index 0000000..e247e3b
 +const ImU32 KIND_COLOURS[] = {IM_COL32(110, 226, 240, 255), IM_COL32(126, 214, 92, 255), IM_COL32(243, 199, 95, 255),
 +                              IM_COL32(255, 150, 200, 255), IM_COL32(245, 240, 225, 255), IM_COL32(255, 140, 90, 255),
 +                              IM_COL32(190, 160, 255, 255)};
++// AppMap's own view (1.9.0, as runtime/pc_cursor.c reads it): its data block, or 0 when the map isn't up
++uint64_t map_data(void) {
++    auto ok = [](uint64_t p) { return p >= GUEST_LO && p < GUEST_HI; };
++    uint64_t mgr = g_site.screen_mgr ? LD64(g_site.screen_mgr) : 0;
++    if (!ok(mgr)) return 0;
++    uint64_t screens = LD64(mgr + 0x30);
++    if (!ok(screens) || LD32(mgr + 0x28) <= 0x2a) return 0;
++    uint64_t s = LD64(screens + 8 * 0x2a);
++    if (!ok(s) || LD8(s + 0xfe) != 2 || LD64(s) != 0x7001ce8298ull) return 0;
++    uint64_t map = LD64(s + 0x3628), d = ok(map) ? LD64(map + 0x8d8) : 0;
++    return ok(d) ? d : 0;
++}
++
 +// What a check still needs in logic, in words (under g_lock): "" once it is in logic
 +std::string needs_text(const Logic &g, const MapPoint &p) {
 +    std::vector<std::string> n;
@@ -2338,6 +2372,12 @@ index 0000000..e247e3b
 +    double bx = -6000 + tile / 2 - t.x / k, bz = -5000 + tile / 2 + t.y / k;  // (a tile's middle is a lattice point)
 +    cx = bx + tile * round((cx - bx) / tile);
 +    cz = bz + tile * round((cz - bz) / tile);
++    // the map's own view when it can be read (exact, and right where the game holds the view back from Hyrule's edge, which
++    // the guess from Link's place above was not): its centre in half metres, x the other way; its zoom the tiles' scale
++    if (uint64_t d = map_data()) {
++        float c0 = *(float *)(uintptr_t)(d + 0x880), c1 = *(float *)(uintptr_t)(d + 0x884), z = *(float *)(uintptr_t)(d + 0x878);
++        if (z > 0.005f && z < 50 && fabsf(c0) < 20000 && fabsf(c1) < 20000) cx = -c0 / 2, cz = c1 / 2, k = 2.0 * z;
++    }
 +    // the 16:9 screen in the window (a wider or taller window keeps the map 16:9 in its middle), and the map's part of
 +    // it between the frame's top and bottom bars
 +    float ppl = fminf(io.DisplaySize.x / 1280, io.DisplaySize.y / 720), mx = io.DisplaySize.x / 2, my = io.DisplaySize.y / 2;
@@ -2363,7 +2403,9 @@ index 0000000..e247e3b
 +    ImDrawList *dl = ImGui::GetBackgroundDrawList();
 +    dl->PushClipRect(lo, hi, false);
 +    std::vector<int64_t> hover;
-+    ImVec2 mouse = io.MousePos;
++    ImVec2 mouse(-1e9f, -1e9f);
++    // (the mouse, while it is what was used last; io.MousePos: only while one of our menus has it, on the map the game has)
++    if (pc_cursor_mouse_last()) menu_mouse_pos(&mouse.x, &mouse.y);
 +    std::lock_guard<std::mutex> l(g_lock);
 +    if (!g_connected) { dl->PopClipRect(); return; }
 +    Logic lg = logic_now();
@@ -5943,7 +5985,7 @@ index 2ed8c2a..5b818c7 100644
      if (g_cap_row && bind_capture_active(&d, &s, &ms)) cap_slot_was = s;
      if (g_cap_row && !bind_capture_active(&d, &s, &ms)) {
 diff --git a/runtime/ui/menu.mm b/runtime/ui/menu.mm
-index 852ede0..52d8bbb 100644
+index 852ede0..099c644 100644
 --- a/runtime/ui/menu.mm
 +++ b/runtime/ui/menu.mm
 @@ -167,7 +167,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
@@ -5955,7 +5997,7 @@ index 852ede0..52d8bbb 100644
  static int g_kbd_max = 8;
  // Window size's list over the game's Options screen (game_options.mm A_SIZE_LIST): up, and until when the press that
  // closed it is kept from the game
-@@ -180,7 +180,11 @@ extern "C" void menu_size_list_open(void) {
+@@ -180,7 +180,21 @@ extern "C" void menu_size_list_open(void) {
      input_reset();
      g_sizes = true;
  }
@@ -5964,11 +6006,21 @@ index 852ede0..52d8bbb 100644
 +extern "C" void ap_chat_set_open(bool open);
 +extern "C" bool ap_chat_can_open(void);
 +extern "C" bool ap_map_click(bool down);
++// The mouse wherever it is, whoever has it (in ImGui's units): the Archipelago map tracker, under the game's own pointer
++static std::atomic<uint64_t> g_mouse_xy{~0ull};
++static uint32_t float_bits(float f) { uint32_t u; memcpy(&u, &f, 4); return u; }
++extern "C" bool menu_mouse_pos(float *x, float *y) {
++    uint64_t v = g_mouse_xy.load();
++    if (v == ~0ull) return false;
++    uint32_t a = (uint32_t)v, b = (uint32_t)(v >> 32);
++    memcpy(x, &a, 4), memcpy(y, &b, 4);
++    return true;
++}
 +static bool capturing() { return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || ap_chat_is_open(); }
  // The game gets no input while this is true (runtime/hle/input.c): menu or name entry up, or a binding capture begun
  // from the game's Options screen.
  extern "C" bool menu_input_captured(void) {
-@@ -250,7 +254,7 @@ bool menu_handle_event(const SDL_Event *e) {
+@@ -250,7 +264,7 @@ bool menu_handle_event(const SDL_Event *e) {
          return true;
      }
      // typing (a text field, the on-screen keyboard, the name entry): keys are text, not menu shortcuts
@@ -5977,7 +6029,7 @@ index 852ede0..52d8bbb 100644
      if (e->type == SDL_EVENT_KEY_UP && e->key.scancode == SDL_SCANCODE_ESCAPE)
          input_pc_escape(false);
      if (pc_cursor_enabled() && !capturing() && !typing && !game_options_input_hold() &&
-@@ -269,6 +273,20 @@ bool menu_handle_event(const SDL_Event *e) {
+@@ -269,6 +283,20 @@ bool menu_handle_event(const SDL_Event *e) {
              set_console(!console_is_open());
              return true;
          }
@@ -5998,7 +6050,15 @@ index 852ede0..52d8bbb 100644
          if (console_is_open()) {
              if (e->key.scancode == SDL_SCANCODE_ESCAPE) { if (!e->key.repeat) set_console(false); return true; }
              if (e->key.scancode == SDL_SCANCODE_V && (e->key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
-@@ -377,6 +395,9 @@ bool menu_handle_event(const SDL_Event *e) {
+@@ -370,6 +398,7 @@ bool menu_handle_event(const SDL_Event *e) {
+         return true;
+     }
+     case SDL_EVENT_MOUSE_MOTION:
++        g_mouse_xy = (uint64_t)float_bits(e->motion.x * g_pixel_density) | (uint64_t)float_bits(e->motion.y * g_pixel_density) << 32;
+         if (!capturing() && !pc_gyro_scene_active()) return false;
+         { QEvent q = {}; q.kind = QEvent::MOUSE_POS; q.x = e->motion.x * g_pixel_density; q.y = e->motion.y * g_pixel_density; push(q); }
+         return true;
+@@ -377,6 +406,9 @@ bool menu_handle_event(const SDL_Event *e) {
          if (e->type == SDL_EVENT_MOUSE_BUTTON_UP && e->button.button == SDL_BUTTON_LEFT && g_sizes_eat_up.exchange(false) &&
              !capturing())
              return true;
@@ -6008,7 +6068,7 @@ index 852ede0..52d8bbb 100644
          if (!capturing() && !pc_gyro_scene_active()) return false;
          {
              QEvent q = {};
-@@ -400,7 +421,7 @@ void menu_apply_window_requests(void *win) {
+@@ -400,7 +432,7 @@ void menu_apply_window_requests(void *win) {
      g_pixel_density = SDL_GetWindowPixelDensity(w);
      static bool text_input;
      // (only while typing: text input brings up the Steam Deck's on-screen keyboard)
@@ -6017,7 +6077,7 @@ index 852ede0..52d8bbb 100644
      if (want_text != text_input) {
          if (want_text) SDL_StartTextInput(w);
          else SDL_StopTextInput(w);
-@@ -517,7 +538,7 @@ static void load_fonts(void) {
+@@ -517,7 +549,7 @@ static void load_fonts(void) {
      if (!g_font_big) g_font_big = g_font;
      if (!g_menu_font || !g_menu_font_big) g_menu_font = g_font, g_menu_font_big = g_font_big;
      g_hint_font = g_hint_buttons = nullptr;
@@ -6026,7 +6086,7 @@ index 852ede0..52d8bbb 100644
      if (g_hint_font_attempted) quick_hint_fonts_load(io.Fonts, &g_hint_font, &g_hint_buttons);
      g_hint_generation = icons_generation;
  }
-@@ -526,7 +547,8 @@ static void load_fonts(void) {
+@@ -526,7 +558,8 @@ static void load_fonts(void) {
  extern "C" void vk_imgui_fonts_changed(void);  // (runtime/nvn/vulkan/imgui_glue.cpp)
  extern "C" const char *vk_hdr_icc_description(void);  // (runtime/nvn/vulkan/device.c)
  static void fonts_follow_language(void) {
@@ -6036,7 +6096,7 @@ index 852ede0..52d8bbb 100644
      bool icons_changed = (g_settings.quick_sort || g_settings.quick_drop) && g_hint_generation != glyphs_font_generation();
      int current_fonts_gen = ui_lang_generation() * 10007 + ui_dynamic_generation();
      if (g_fonts_lang == current_fonts_gen && !need_hint_fonts && !icons_changed) return;
-@@ -2184,6 +2206,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
+@@ -2184,6 +2217,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
  // Everything menu_render draws, in one place: menu_render_needed (the caller's cue to drain the recorder first) and
  // menu_render (which decides again, and drains itself) must agree on it. The pointer's hover box, the console and the
  // gyro drag were missing here: their frames went to the command buffer while the recorder thread was still filling it.
@@ -6046,7 +6106,7 @@ index 852ede0..52d8bbb 100644
  static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bool *gyro_show = NULL, GyroScene *gyro = NULL) {
      float box[4];
      GyroScene gs;
-@@ -2191,8 +2216,10 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+@@ -2191,8 +2227,10 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
      bool gyro_on = pc_gyro_scene_view(gyro ? gyro : &gs);
      if (pointer_hover) *pointer_hover = hover;
      if (gyro_show) *gyro_show = gyro_on;
@@ -6059,7 +6119,7 @@ index 852ede0..52d8bbb 100644
  }
  
  bool menu_render_needed(void) { return menu_draws(); }
-@@ -2275,6 +2302,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
+@@ -2275,6 +2313,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
      }
  
      if (g_settings.perf_overlay != PERF_OFF) perf_overlay_draw(io, scale);

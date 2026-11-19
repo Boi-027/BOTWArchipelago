@@ -569,7 +569,7 @@ index 4462ab5..a82af17 100644
      float o, n;
 diff --git a/runtime/control_ap.c b/runtime/control_ap.c
 new file mode 100644
-index 0000000..7b9be37
+index 0000000..2c7975f
 --- /dev/null
 +++ b/runtime/control_ap.c
 @@ -0,0 +1,147 @@
@@ -628,7 +628,7 @@ index 0000000..7b9be37
 +    control_field_bool(r, "ringlink", g_settings.ap_ringlink);
 +    control_field_int(r, "connects", g_connects);
 +    extern void ap_client_state(char *buf, size_t n);  // runtime/ui/ap_client.mm
-+    char state[256];
++    char state[512];
 +    ap_client_state(state, sizeof state);
 +    control_field_str(r, "client", state);
 +}
@@ -1247,10 +1247,10 @@ index 57a71c6..e9c9a6f 100644
      bool one_hit_kill;       // whatever else takes damage loses all its life at once
 diff --git a/runtime/ui/ap_client.mm b/runtime/ui/ap_client.mm
 new file mode 100644
-index 0000000..82cc808
+index 0000000..e247e3b
 --- /dev/null
 +++ b/runtime/ui/ap_client.mm
-@@ -0,0 +1,1192 @@
+@@ -0,0 +1,1297 @@
 +// Archipelago, natively: the multiworld client inside Savage Wind. Options > Archipelago (game_options.mm) holds the
 +// server, slot, password and links (settings.h ap_*); Connect starts this. One thread reads the websocket (WinHTTP:
 +// TLS for wss:// with nothing to ship), one does the game side twice a second while Link is in the world:
@@ -2266,6 +2266,44 @@ index 0000000..82cc808
 +const ImU32 KIND_COLOURS[] = {IM_COL32(110, 226, 240, 255), IM_COL32(126, 214, 92, 255), IM_COL32(243, 199, 95, 255),
 +                              IM_COL32(255, 150, 200, 255), IM_COL32(245, 240, 225, 255), IM_COL32(255, 140, 90, 255),
 +                              IM_COL32(190, 160, 255, 255)};
++// What a check still needs in logic, in words (under g_lock): "" once it is in logic
++std::string needs_text(const Logic &g, const MapPoint &p) {
++    std::vector<std::string> n;
++    auto item = [&](int64_t id) { n.push_back(item_name(id, g_slot)); };
++    auto counted = [&](int need, int64_t id, const char *what) {
++        if (g.count(id) < need) n.push_back(std::to_string(need) + " " + what + " (" + std::to_string(g.count(id)) + " so far)");
++    };
++    if (p.need & NEED_GLIDER && !g.has(LG_PARAGLIDER)) item(LG_PARAGLIDER);
++    for (int i = 0; i < 4; i++)
++        if (((p.need & NEED_RUNES) || p.rune == i) && !g.has(LG_RUNES[i])) item(LG_RUNES[i]);
++    if ((p.seeds || p.need & NEED_MARACAS) && !g.has(LG_MARACAS)) item(LG_MARACAS);
++    if (p.seeds) counted(p.seeds, LG_KOROK, "Korok Seeds");
++    for (int i = 0; i < 4; i++)
++        if (p.need & (NEED_TRIAL | NEED_POWERS) && !g.has(LG_POWERS[i])) item(LG_POWERS[i]);
++    if (p.need & (NEED_TRIAL | NEED_PULL)) counted(g.hearts, LG_HEART, "Heart Containers");
++    if (p.need & NEED_TRIAL && !g.has(LG_SWORD)) item(LG_SWORD);
++    if (p.need & NEED_HELM && !g.has(LG_HELM)) item(LG_HELM);
++    if (p.need & NEED_ZORA && !g.has(LG_ZORA)) item(LG_ZORA);
++    for (int b = 0; b < 4; b++)
++        if (p.freed >> b & 1 && !(g.freed >> b & 1)) n.push_back(std::string(LG_BEASTS[b]) + " freed");
++    if (g.lock && p.region >= 0 && !g.open[p.region]) {
++        if (!g.has(LG_MAPS[p.region])) item(LG_MAPS[p.region]);
++        else n.push_back(std::string("a way into ") + LG_REGIONS[p.region] + ": a neighbouring region's map");
++    } else if (g.lock && p.region < 0) {
++        int maps = 0;
++        for (int r = 0; r < 15; r++) maps += r != LG_PLATEAU && !g.has(LG_MAPS[r]);
++        if (maps) n.push_back(std::to_string(maps) + " more region maps (it can be anywhere)");
++    }
++    std::string s;
++    for (const std::string &x : n) s += (s.empty() ? "" : ", ") + x;
++    return s;
++}
++
++// the icons under the mouse this frame, and the ones a click pinned (their details stay up until a click elsewhere)
++std::mutex g_pin_lock;
++std::vector<int64_t> g_hover_now, g_pinned;
++ImVec2 g_pinned_at, g_hover_at;  // (where the mouse was: the event thread does not touch ImGui)
++
 +struct Tiles { uint64_t frame; float scale, x, y, gap; int n; };
 +std::mutex g_tiles_lock;
 +Tiles g_tiles_now, g_tiles_done;  // (the frame being drawn, the last whole one)
@@ -2273,6 +2311,11 @@ index 0000000..82cc808
 +void map_draw(ImGuiIO &io) {
 +    static bool open, have;
 +    static double cx, cz;
++    {
++        std::lock_guard<std::mutex> l(g_pin_lock);
++        g_hover_now.clear();
++        if (!framepace_map_ui()) g_pinned.clear();
++    }
 +    if (!framepace_map_ui()) { open = false; return; }
 +    if (!open) {  // (just opened: on Link; the last map's tiles are not this one's)
 +        open = true;
@@ -2321,49 +2364,94 @@ index 0000000..82cc808
 +    dl->PushClipRect(lo, hi, false);
 +    std::vector<int64_t> hover;
 +    ImVec2 mouse = io.MousePos;
-+    {
-+        std::lock_guard<std::mutex> l(g_lock);
-+        if (!g_connected) { dl->PopClipRect(); return; }
-+        Logic lg = logic_now();
-+        // the commonest under the rest: Korok seeds, chests, shops, others, quests, shrines, towers
-+        static const uint8_t ORDER[] = {1, 2, 3, 6, 4, 0, 5};
++    std::lock_guard<std::mutex> l(g_lock);
++    if (!g_connected) { dl->PopClipRect(); return; }
++    Logic lg = logic_now();
++    static std::vector<int8_t> state;  // (each place this frame: -1 not a check still to get or not on screen, 0 out of logic, 1 in)
++    state.assign(sizeof MAP_POINTS / sizeof *MAP_POINTS, -1);
++    for (size_t i = 0; i < state.size(); i++) {
++        const MapPoint &p = MAP_POINTS[i];
++        float sx = mx + (float)((p.x - cx) * k) * ppl, sy = my + (float)((p.z - cz) * k) * ppl;
++        if (sx < lo.x - half || sx > hi.x + half || sy < lo.y - half || sy > hi.y + half) continue;
++        if (g_missing.count(LOC_BASE + p.hash)) state[i] = lg.ok(p);
++    }
++    // out of logic dimmed under the rest; within each, the commonest under the rest: Korok seeds, chests, shops, others,
++    // quests, shrines, towers
++    static const uint8_t ORDER[] = {1, 2, 3, 6, 4, 0, 5};
++    for (int in : {0, 1})
 +        for (uint8_t kind : ORDER)
-+            for (size_t i = 0; i < sizeof MAP_POINTS / sizeof *MAP_POINTS; i++) {
++            for (size_t i = 0; i < state.size(); i++) {
 +                const MapPoint &p = MAP_POINTS[i];
-+                if (p.kind != kind) continue;
++                if (state[i] != in || p.kind != kind) continue;
 +                float sx = mx + (float)((p.x - cx) * k) * ppl, sy = my + (float)((p.z - cz) * k) * ppl;
-+                if (sx < lo.x - half || sx > hi.x + half || sy < lo.y - half || sy > hi.y + half) continue;
-+                if (!g_missing.count(LOC_BASE + p.hash) || !lg.ok(p)) continue;
++                float h = in ? half : half * 0.8f;
 +                if (icons) {
-+                    dl->AddImage(icons, ImVec2(sx - half, sy - half), ImVec2(sx + half, sy + half), ImVec2(kind / 7.f, 0),
-+                                 ImVec2((kind + 1) / 7.f, 1));
++                    dl->AddImage(icons, ImVec2(sx - h, sy - h), ImVec2(sx + h, sy + h), ImVec2(kind / 7.f, 0),
++                                 ImVec2((kind + 1) / 7.f, 1), in ? IM_COL32_WHITE : IM_COL32(175, 175, 175, 140));
 +                } else {
-+                    dl->AddCircleFilled(ImVec2(sx, sy), r + ppl * 0.9f, IM_COL32(10, 14, 16, 200), 12);
-+                    dl->AddCircleFilled(ImVec2(sx, sy), r, KIND_COLOURS[kind % 7], 12);
++                    dl->AddCircleFilled(ImVec2(sx, sy), r + ppl * 0.9f, IM_COL32(10, 14, 16, in ? 200 : 80), 12);
++                    dl->AddCircleFilled(ImVec2(sx, sy), r, (KIND_COLOURS[kind % 7] & 0x00ffffff) | (in ? 0xff000000u : 0x60000000u), 12);
 +                }
-+                float dx = mouse.x - sx, dy = mouse.y - sy, reach = half * 0.8f + 2 * ppl;
-+                if (dx * dx + dy * dy <= reach * reach && hover.size() < 6) hover.push_back(LOC_BASE + p.hash);
++                float dx = mouse.x - sx, dy = mouse.y - sy, reach = h * 0.8f + 2 * ppl;
++                if (dx * dx + dy * dy <= reach * reach) hover.push_back(LOC_BASE + p.hash);
 +            }
-+        dl->PopClipRect();
-+        if (hover.empty()) return;
-+        // the names under the mouse, in a band beside it
-+        ImFont *f = g_game_font ? g_game_font : ImGui::GetFont();
-+        float fs = 22 * ppl / 1.5f, pad = 8 * ppl / 1.5f, w = 0;
-+        std::vector<std::string> names;
-+        for (int64_t id : hover) {
-+            names.push_back(loc_name(id, g_slot));
-+            w = fmaxf(w, f->CalcTextSizeA(fs, FLT_MAX, 0, names.back().c_str()).x);
-+        }
-+        ImVec2 a(mouse.x + 18 * ppl / 1.5f, mouse.y - pad), b(a.x + w + 2 * pad, a.y + names.size() * fs * 1.25f + 2 * pad);
-+        if (b.x > io.DisplaySize.x) a.x -= b.x - io.DisplaySize.x, b.x = io.DisplaySize.x;
-+        ImDrawList *fg = ImGui::GetForegroundDrawList();
-+        fg->AddRectFilled(a, b, IM_COL32(12, 14, 13, 215), 6 * ppl / 1.5f);
-+        for (size_t i = 0; i < names.size(); i++)
-+            fg->AddText(f, fs, ImVec2(a.x + pad, a.y + pad + i * fs * 1.25f), IM_COL32(245, 240, 225, 255), names[i].c_str());
++    dl->PopClipRect();
++    // the details: the pinned ones (a click), else the ones under the mouse; the topmost (drawn last) first
++    std::reverse(hover.begin(), hover.end());
++    if (hover.size() > 5) hover.resize(5);
++    std::vector<int64_t> show;
++    ImVec2 at = mouse;
++    {
++        std::lock_guard<std::mutex> pl(g_pin_lock);
++        g_hover_now = hover, g_hover_at = mouse;
++        show = g_pinned.empty() ? hover : g_pinned;
++        if (!g_pinned.empty()) at = g_pinned_at;
++    }
++    if (show.empty()) return;
++    ImFont *f = g_game_font ? g_game_font : ImGui::GetFont();
++    float fs = 22 * ppl / 1.5f, small = 17 * ppl / 1.5f, pad = 9 * ppl / 1.5f, wrap = 520 * ppl / 1.5f, w = 0, hgt = 0;
++    struct Line { std::string text; float size; ImU32 colour; };
++    std::vector<Line> lines;
++    for (int64_t id : show) {
++        const MapPoint *p = nullptr;
++        for (const MapPoint &q : MAP_POINTS) if (LOC_BASE + q.hash == id) { p = &q; break; }
++        if (!lines.empty()) lines.push_back({"", small * 0.5f, 0});
++        lines.push_back({loc_name(id, g_slot), fs, IM_COL32(245, 240, 225, 255)});
++        if (!g_missing.count(id)) lines.push_back({"Done", small, IM_COL32(170, 170, 160, 255)});
++        else if (std::string need = p ? needs_text(lg, *p) : ""; need.empty())
++            lines.push_back({"In logic: you can get it now", small, IM_COL32(140, 225, 120, 255)});
++        else
++            lines.push_back({"Needs: " + need, small, IM_COL32(255, 180, 110, 255)});
++    }
++    for (const Line &x : lines) {
++        ImVec2 sz = f->CalcTextSizeA(x.size, FLT_MAX, wrap, x.text.c_str());
++        w = fmaxf(w, sz.x), hgt += x.text.empty() ? x.size : sz.y + 2 * ppl;
++    }
++    ImVec2 a(at.x + 18 * ppl / 1.5f, at.y - pad), b(a.x + w + 2 * pad, a.y + hgt + 2 * pad);
++    if (b.x > io.DisplaySize.x) a.x -= b.x - io.DisplaySize.x, b.x = io.DisplaySize.x;
++    if (b.y > io.DisplaySize.y) a.y -= b.y - io.DisplaySize.y, b.y = io.DisplaySize.y;
++    ImDrawList *fg = ImGui::GetForegroundDrawList();
++    fg->AddRectFilled(a, b, IM_COL32(12, 14, 13, 225), 6 * ppl / 1.5f);
++    float y = a.y + pad;
++    for (const Line &x : lines) {
++        if (x.text.empty()) { y += x.size; continue; }
++        fg->AddText(f, x.size, ImVec2(a.x + pad, y), x.colour, x.text.c_str(), nullptr, wrap);
++        y += f->CalcTextSizeA(x.size, FLT_MAX, wrap, x.text.c_str()).y + 2 * ppl;
 +    }
 +}
 +
 +}  // namespace
++
++// (menu.mm, a left click while no menu of ours is up) a click on a map tracker icon pins its details and is not the game's;
++// one elsewhere lets go of them (and is)
++extern "C" bool ap_map_click(bool down) {
++    std::lock_guard<std::mutex> l(g_pin_lock);
++    static bool eat_up;
++    if (!down) { bool e = eat_up; eat_up = false; return e; }
++    if (!framepace_map_ui() || g_hover_now.empty()) { g_pinned.clear(); return false; }
++    g_pinned = g_hover_now, g_pinned_at = g_hover_at, eat_up = true;
++    return true;
++}
 +
 +// (runtime/nvn/vulkan/exec.c, the recording thread: each terrain tile AppMap draws, as its scale and offset)
 +extern "C" void ap_map_tile(float scale, float x, float y) {
@@ -2412,9 +2500,12 @@ index 0000000..82cc808
 +        ImU32 top = IM_COL32(222, 226, 226, (int)(255 * a * 0.82f)), low = IM_COL32(232, 235, 233, (int)(255 * a));
 +        bg->AddRectFilledMultiColor(ImVec2(0, 0), io.DisplaySize, top, top, low, low);
 +    }
++    {
++        std::lock_guard<std::mutex> l(g_note_lock);
++        g_game_font = game_font;  // (this frame's: a font rebuild frees the last one, and the map's details use it too)
++    }
 +    map_draw(io);
 +    std::lock_guard<std::mutex> l(g_note_lock);
-+    g_game_font = game_font;
 +    double t = now_s();
 +    while (!g_notes.empty() && t - g_notes.front().born > 7.3) g_notes.pop_front();
 +    if (g_chat_open.load()) return chat_draw(io, scale);
@@ -2439,16 +2530,30 @@ index 0000000..82cc808
 +    std::lock_guard<std::mutex> l(g_lock);
 +    int32_t pending = -1, done = -1;
 +    gdt_get(crc("AP_Pending"), &pending), gdt_get(crc("AP_Done"), &done);
-+    snprintf(buf, n, "connected=%d world=%d sync=%d syncing=%d raised=%d event=%d pending=%d done=%d given=%d/%zu step=%d",
++    // (and the map tracker: its terrain tiles lately, the checks missing and in logic, what the logic sees)
++    Tiles t;
++    {
++        std::lock_guard<std::mutex> tl(g_tiles_lock);
++        t = g_tiles_done.n ? g_tiles_done : g_tiles_now;
++    }
++    Logic lg = logic_now();
++    int missing = 0, in_logic = 0, open = 0;
++    for (const MapPoint &p : MAP_POINTS)
++        if (g_missing.count(LOC_BASE + p.hash)) missing++, in_logic += lg.ok(p);
++    for (int r = 0; r < 15; r++) open |= lg.open[r] << r;
++    snprintf(buf, n, "connected=%d world=%d sync=%d syncing=%d raised=%d event=%d pending=%d done=%d given=%d/%zu step=%d "
++             "map: tiles=%d scale=%g age=%lld missing=%d inlogic=%d glider=%d runes=%d%d%d%d lock=%d open=%x freed=%x",
 +             g_connected, in_world(), g_env_sync, g_env_syncing, g_demo_raised, framepace_in_event(), pending, done, g_given,
-+             g_items.size(), g_step);
++             g_items.size(), g_step, t.n, t.scale, (long long)(renderer_present_count() - t.frame), missing, in_logic,
++             lg.has(LG_PARAGLIDER), lg.has(LG_RUNES[0]), lg.has(LG_RUNES[1]), lg.has(LG_RUNES[2]), lg.has(LG_RUNES[3]),
++             lg.lock, open, lg.freed);
 +}
 diff --git a/runtime/ui/ap_map_logic.inc b/runtime/ui/ap_map_logic.inc
 new file mode 100644
-index 0000000..a4735d1
+index 0000000..9f867f3
 --- /dev/null
 +++ b/runtime/ui/ap_map_logic.inc
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,12 @@
 +// generated by botw_ap tools/map_points.py from worlds/botw: the items its logic names, its regions
 +const int64_t LG_PARAGLIDER = 7377000065LL, LG_MARACAS = 7377000060LL, LG_KOROK = 7377000028LL,
 +              LG_HEART = 7377000005LL, LG_SWORD = 7377000004LL,
@@ -2458,7 +2563,9 @@ index 0000000..a4735d1
 +const int64_t LG_MAPS[15] = {7377000071, 7377000072, 7377000073, 7377000074, 7377000075, 7377000076, 0, 7377000077, 7377000078, 7377000079, 7377000080, 7377000081, 7377000082, 7377000083, 7377000084};  // (each region's map; 0: the Great Plateau's, none)
 +const int LG_PLATEAU = 6;
 +const int8_t LG_ADJACENT[15][8] = {{1, 4, 14, -1, -1, -1, -1, -1}, {0, 2, 14, -1, -1, -1, -1, -1}, {1, 3, 5, 14, -1, -1, -1, -1}, {2, 5, 6, 8, -1, -1, -1, -1}, {0, 5, 9, 10, 11, 14, -1, -1}, {2, 3, 4, 6, 7, 11, 14, -1}, {3, 5, 7, 8, -1, -1, -1, -1}, {5, 6, 8, 11, 12, 13, -1, -1}, {3, 6, 7, 13, -1, -1, -1, -1}, {4, 10, 11, -1, -1, -1, -1, -1}, {4, 9, 11, -1, -1, -1, -1, -1}, {4, 5, 7, 9, 10, 12, -1, -1}, {7, 11, 13, -1, -1, -1, -1, -1}, {7, 8, 12, -1, -1, -1, -1, -1}, {0, 1, 2, 4, 5, -1, -1, -1}};
-+const uint32_t LG_CLEARED[4] = {0xb742dd6cu, 0x39d2bcdfu, 0x4007e1eeu, 0x18d100e9u};  // (Vah Ruta, Medoh, Rudania, Naboris)
++const uint32_t LG_CLEARED[4] = {0xb742dd6cu, 0x39d2bcdfu, 0x4007e1eeu, 0x18d100e9u};
++const char *const LG_BEASTS[4] = {"Vah Ruta", "Vah Medoh", "Vah Rudania", "Vah Naboris"};
++const char *const LG_REGIONS[15] = {"Hebra", "Tabantha", "Gerudo", "Wasteland", "Woodland", "Central", "Great Plateau", "Dueling Peaks", "Lake", "Eldin", "Akkala", "Lanayru", "Hateno", "Faron", "Ridgeland"};
 diff --git a/runtime/ui/ap_map_points.inc b/runtime/ui/ap_map_points.inc
 new file mode 100644
 index 0000000..8fc5d91
@@ -5836,7 +5943,7 @@ index 2ed8c2a..5b818c7 100644
      if (g_cap_row && bind_capture_active(&d, &s, &ms)) cap_slot_was = s;
      if (g_cap_row && !bind_capture_active(&d, &s, &ms)) {
 diff --git a/runtime/ui/menu.mm b/runtime/ui/menu.mm
-index 852ede0..bf0a02c 100644
+index 852ede0..52d8bbb 100644
 --- a/runtime/ui/menu.mm
 +++ b/runtime/ui/menu.mm
 @@ -167,7 +167,7 @@ static ImGuiKey key_from_pad(Uint8 b) {
@@ -5848,7 +5955,7 @@ index 852ede0..bf0a02c 100644
  static int g_kbd_max = 8;
  // Window size's list over the game's Options screen (game_options.mm A_SIZE_LIST): up, and until when the press that
  // closed it is kept from the game
-@@ -180,7 +180,10 @@ extern "C" void menu_size_list_open(void) {
+@@ -180,7 +180,11 @@ extern "C" void menu_size_list_open(void) {
      input_reset();
      g_sizes = true;
  }
@@ -5856,11 +5963,12 @@ index 852ede0..bf0a02c 100644
 +extern "C" bool ap_chat_is_open(void);  // runtime/ui/ap_client.mm: the Archipelago chat (Enter in the world)
 +extern "C" void ap_chat_set_open(bool open);
 +extern "C" bool ap_chat_can_open(void);
++extern "C" bool ap_map_click(bool down);
 +static bool capturing() { return g_open.load() || g_kbd.load() == 1 || g_sizes.load() || console_is_open() || ap_chat_is_open(); }
  // The game gets no input while this is true (runtime/hle/input.c): menu or name entry up, or a binding capture begun
  // from the game's Options screen.
  extern "C" bool menu_input_captured(void) {
-@@ -250,7 +253,7 @@ bool menu_handle_event(const SDL_Event *e) {
+@@ -250,7 +254,7 @@ bool menu_handle_event(const SDL_Event *e) {
          return true;
      }
      // typing (a text field, the on-screen keyboard, the name entry): keys are text, not menu shortcuts
@@ -5869,7 +5977,7 @@ index 852ede0..bf0a02c 100644
      if (e->type == SDL_EVENT_KEY_UP && e->key.scancode == SDL_SCANCODE_ESCAPE)
          input_pc_escape(false);
      if (pc_cursor_enabled() && !capturing() && !typing && !game_options_input_hold() &&
-@@ -269,6 +272,20 @@ bool menu_handle_event(const SDL_Event *e) {
+@@ -269,6 +273,20 @@ bool menu_handle_event(const SDL_Event *e) {
              set_console(!console_is_open());
              return true;
          }
@@ -5890,7 +5998,17 @@ index 852ede0..bf0a02c 100644
          if (console_is_open()) {
              if (e->key.scancode == SDL_SCANCODE_ESCAPE) { if (!e->key.repeat) set_console(false); return true; }
              if (e->key.scancode == SDL_SCANCODE_V && (e->key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
-@@ -400,7 +417,7 @@ void menu_apply_window_requests(void *win) {
+@@ -377,6 +395,9 @@ bool menu_handle_event(const SDL_Event *e) {
+         if (e->type == SDL_EVENT_MOUSE_BUTTON_UP && e->button.button == SDL_BUTTON_LEFT && g_sizes_eat_up.exchange(false) &&
+             !capturing())
+             return true;
++        // (a click on an Archipelago map tracker icon pins its details, and is not the game's: runtime/ui/ap_client.mm)
++        if (e->button.button == SDL_BUTTON_LEFT && !capturing() && ap_map_click(e->type == SDL_EVENT_MOUSE_BUTTON_DOWN))
++            return true;
+         if (!capturing() && !pc_gyro_scene_active()) return false;
+         {
+             QEvent q = {};
+@@ -400,7 +421,7 @@ void menu_apply_window_requests(void *win) {
      g_pixel_density = SDL_GetWindowPixelDensity(w);
      static bool text_input;
      // (only while typing: text input brings up the Steam Deck's on-screen keyboard)
@@ -5899,7 +6017,7 @@ index 852ede0..bf0a02c 100644
      if (want_text != text_input) {
          if (want_text) SDL_StartTextInput(w);
          else SDL_StopTextInput(w);
-@@ -517,7 +534,7 @@ static void load_fonts(void) {
+@@ -517,7 +538,7 @@ static void load_fonts(void) {
      if (!g_font_big) g_font_big = g_font;
      if (!g_menu_font || !g_menu_font_big) g_menu_font = g_font, g_menu_font_big = g_font_big;
      g_hint_font = g_hint_buttons = nullptr;
@@ -5908,7 +6026,7 @@ index 852ede0..bf0a02c 100644
      if (g_hint_font_attempted) quick_hint_fonts_load(io.Fonts, &g_hint_font, &g_hint_buttons);
      g_hint_generation = icons_generation;
  }
-@@ -526,7 +543,8 @@ static void load_fonts(void) {
+@@ -526,7 +547,8 @@ static void load_fonts(void) {
  extern "C" void vk_imgui_fonts_changed(void);  // (runtime/nvn/vulkan/imgui_glue.cpp)
  extern "C" const char *vk_hdr_icc_description(void);  // (runtime/nvn/vulkan/device.c)
  static void fonts_follow_language(void) {
@@ -5918,7 +6036,7 @@ index 852ede0..bf0a02c 100644
      bool icons_changed = (g_settings.quick_sort || g_settings.quick_drop) && g_hint_generation != glyphs_font_generation();
      int current_fonts_gen = ui_lang_generation() * 10007 + ui_dynamic_generation();
      if (g_fonts_lang == current_fonts_gen && !need_hint_fonts && !icons_changed) return;
-@@ -2184,6 +2202,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
+@@ -2184,6 +2206,9 @@ static void quick_inventory_hint_draw(const ImGuiIO &io) {
  // Everything menu_render draws, in one place: menu_render_needed (the caller's cue to drain the recorder first) and
  // menu_render (which decides again, and drains itself) must agree on it. The pointer's hover box, the console and the
  // gyro drag were missing here: their frames went to the command buffer while the recorder thread was still filling it.
@@ -5928,7 +6046,7 @@ index 852ede0..bf0a02c 100644
  static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bool *gyro_show = NULL, GyroScene *gyro = NULL) {
      float box[4];
      GyroScene gs;
-@@ -2191,8 +2212,10 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
+@@ -2191,8 +2216,10 @@ static bool menu_draws(bool *pointer_hover = NULL, float *pointer_box = NULL, bo
      bool gyro_on = pc_gyro_scene_view(gyro ? gyro : &gs);
      if (pointer_hover) *pointer_hover = hover;
      if (gyro_show) *gyro_show = gyro_on;
@@ -5941,7 +6059,7 @@ index 852ede0..bf0a02c 100644
  }
  
  bool menu_render_needed(void) { return menu_draws(); }
-@@ -2275,6 +2298,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
+@@ -2275,6 +2302,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
      }
  
      if (g_settings.perf_overlay != PERF_OFF) perf_overlay_draw(io, scale);

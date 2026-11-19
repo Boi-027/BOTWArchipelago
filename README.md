@@ -50,13 +50,14 @@ Press **Enter** out in the world to open the chat: scroll the log with the mouse
 talk to everyone, or ask for a hint with `!hint <item>`. **Esc** closes it.
 
 ### Map tracker
-Open the map while connected and every check you can get now, in logic, has an icon on it: shrines, Korok seeds,
-chests, shops, quests, towers and minigames. A check shows once the items it needs have come (the paraglider, the
-runes, a region's map with the region lock...), goes away as soon as it is sent, and pointing the mouse at an icon
-names it. The icons are made from your own game files at
-**Set up** (`tools/map_icons.py`); without them the tracker shows coloured dots.
+Open the map while connected and every check you still have to get has an icon on it: shrines, Korok seeds, chests,
+shops, quests, towers and minigames. The ones in logic, that you can get now, are bright; the rest are dimmed under
+them and light up as the items they need come (the paraglider, the runes, a region's map with the region lock...).
+A check's icon goes away as soon as it is sent. Point the mouse at an icon to see the check and what it still needs
+("Needs: Magnesis", "441 Korok Seeds (120 so far)"); click it to keep that up, click elsewhere to let it go. The icons
+are made from your own game files at **Set up** (`tools/map_icons.py`); without them the tracker shows coloured dots.
 
-<img src="docs/images/map-tracker.jpg" alt="The map before the Paraglider and the runes, after them with the checks now in logic, and up close" width="100%">
+<img src="docs/images/map-tracker.jpg" alt="The map without Magnesis, its checks dimmed; with all four runes, bright; and a check's details: what it needs" width="100%">
 
 ### The multiworld in your Adventure Log
 Two quests of the game's own start once you connect, at **Multiworld: _your slot_**. **Archipelago Goal** (Main

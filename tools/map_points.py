@@ -69,7 +69,9 @@ const int64_t LG_POWERS[4] = {{{", ".join(one(n) for n in powers)}}};
 const int64_t LG_MAPS[{len(names)}] = {{{maps}}};  // (each region's map; 0: the Great Plateau's, none)
 const int LG_PLATEAU = {regions["plateau"]};
 const int8_t LG_ADJACENT[{len(names)}][8] = {{{adj}}};
-const uint32_t LG_CLEARED[4] = {{{", ".join(f"0x{by_hash[b + ' Cleared']:08x}u" for b in beasts)}}};  // (Vah Ruta, Medoh, Rudania, Naboris)
+const uint32_t LG_CLEARED[4] = {{{", ".join(f"0x{by_hash[b + ' Cleared']:08x}u" for b in beasts)}}};
+const char *const LG_BEASTS[4] = {{{", ".join(f'"{b}"' for b in beasts)}}};
+const char *const LG_REGIONS[{len(names)}] = {{{", ".join(f'"{n}"' for n in names)}}};
 """, encoding="utf-8", newline="\n")
     print(f"{len(rows)} places -> {root / 'ap_map_points.inc'}, logic -> {root / 'ap_map_logic.inc'}")
 

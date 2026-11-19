@@ -686,7 +686,7 @@ def main(ex, out_dir):
     }
     json.dump(layout, open(os.path.join(pack, "layouts", "tracker.json"), "w"), indent=1)
     json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild",
-               "package_uid": "botw_ap_savagewind", "package_version": "0.4.8", "platform": "switch",
+               "package_uid": "botw_ap_savagewind", "package_version": "0.4.9", "platform": "switch",
                "variants": {"standard": {"display_name": "Map Tracker", "flags": ["ap"]}}},
               open(os.path.join(pack, "manifest.json"), "w"), indent=1)
     z = os.path.join(out_dir, "BotW_AP.zip")

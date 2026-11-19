@@ -148,6 +148,7 @@ see its step.
      from your game files.
 4. When all four beasts are free, the **Shrine of Resurrection** lights up. Fill in the server, slot name
    and password, pick your links and press **Play**.
+5. Once you're in-game go to Options -> Archipelago -> Connect
 
 ### Updating Savage Wind
 

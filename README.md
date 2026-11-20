@@ -298,6 +298,7 @@ To build the launcher, put your patched `savagewind.exe` (with a `savagewind.exe
   (Dagah Keek, Mah Eliya, Diving is Beauty!), and the Master Sword needs at least 10 Heart Containers, as in the game.
 - Three chests nobody can open (Hateno Village's in front of the inn, Rassla Lake's, Aris Beach's in the sea) are never
   checks.
+- Thanks to Eldras [BOTW-Archipelago](https://github.com/EIdras/BOTW-Archipelago) for the Region Lock and Poptracker ideas.
 - This is a fan project, not affiliated with or endorsed by Nintendo. *The Legend of Zelda* is a trademark of Nintendo.
 
 <div align="center">

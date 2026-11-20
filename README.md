@@ -136,6 +136,8 @@ on the title and loading screens.
 The launcher is the Sheikah Slate's map: every setup step is a landmark where it really is in Hyrule. Click one to
 see its step.
 
+**MAKE SURE YOU SETUP SAVAGE WIND NORMALLY BEFORE HAND!**
+
 1. Download **`BotW.AP.Launcher.exe`** from the [latest release](../../releases/latest).
 2. Start it, click **Vah Ruta** and choose your **Savage Wind folder** (the one with `savagewind.exe`). Click the
    **Master Sword** to choose your **Archipelago** and **PopTracker** folders too, if you want the world and a map

@@ -57,6 +57,8 @@ ITEMS = {
     "Korok Seed": ("korok", "consumable", 1341, "Obj_KorokNuts"),
     "Thunder Helm": ("thunder_helm", "toggle", None, "Armor_115_Head"),
     "Zora Armor": ("zora_armor", "toggle", None, "Armor_006_Upper"),
+    "Flamebreaker Set": ("flamebreaker", "toggle", None, "Armor_011_Upper"),
+    "Gerudo Set": ("gerudo_set", "toggle", None, "Armor_053_Upper"),
     "Hestu's Maracas": ("maracas", "toggle", None, "Obj_Maracas"),
     "Travel Medallion": ("travel_medallion", "toggle", None, "Obj_WarpDLC"),
     **{f"{r} Map": (f"map_{i:02d}", "toggle", None, None) for i, r in enumerate(NAMES) if i != PLATEAU},
@@ -308,6 +310,12 @@ def locked_look(img):
 
 
 # ---- the logic, as worlds/botw/__init__.py has it
+def check_logic():
+    if not hasattr(check_logic, "d"):
+        check_logic.d = json.load(open(os.path.join(WORLD, "data", "logic.json"), encoding="utf8"))
+    return check_logic.d
+
+
 def rule(l):
     r = {"reg": l.get("region", -1)}
     if "korok_seeds" in l:
@@ -320,21 +328,20 @@ def rule(l):
         r["pull"] = True
     elif l["flag"] == "OldKorok_Help_Finish":
         r["maracas"] = True
-    elif "Naboris" in l["name"] and l["category"] in ("Divine Beast", "Divine Beast Chest", "Main Quest"):
-        r["helm"] = True
     name = l["name"].split(" Chest")[0] if l["category"] == "Shrine Chest" else l["name"]
     beasts, zora = next((v for k, v in NEEDS.items() if name == k or name.startswith(k + " ")), ([], False))
     if beasts:
         r["freed"] = sorted(set(r.get("freed", []) + beasts))
-    if zora:
-        r["zora"] = True
+    items = {"zora_armor"} if zora else set()
     shrine = l.get("dungeon") or SHRINE_DUNGEON.get(l["name"].split(" Chest")[0])
-    if l["category"] == "Rune Terminal" or l["flag"] in RUNE_FREE:
-        pass
-    elif l.get("plateau") and shrine in SHRINE_RUNE:
-        r["rune"] = SHRINE_RUNE[shrine]
-    else:
-        r["runes"] = True
+    if l["category"] != "Rune Terminal" and l["flag"] not in RUNE_FREE and l.get("plateau") and shrine in SHRINE_RUNE:
+        items.add(SHRINE_RUNE[shrine])
+    want = check_logic().get(l["name"], {})  # (worlds/botw/data/logic.json: the runes, climate, Gerudo Town...)
+    items |= {ITEMS[n][0] for n in want.get("all", [])}
+    if items:
+        r["items"] = sorted(items)
+    if want.get("any"):
+        r["any"] = sorted(ITEMS[n][0] for n in want["any"])
     if not l.get("plateau"):
         r["glider"] = True
     return r
@@ -352,7 +359,6 @@ local function count(code)
   return 0
 end
 function has(code) return count(code) > 0 end
-local function all_runes() return has("remote_bomb") and has("magnesis") and has("stasis") and has("cryonis") end
 local function powers() return has("mipha") and has("daruk") and has("revali") and has("urbosa") end
 -- the regions Link can reach: from the Great Plateau, a neighbour with its map (off the plateau's: the paraglider)
 function regions_open()
@@ -375,15 +381,17 @@ function botw(id)
   local r = RULES[tonumber(id)]
   if not r then return false end
   if r.glider and not has("paraglider") then return false end
-  if r.runes and not all_runes() then return false end
-  if r.rune and not has(r.rune) then return false end
+  if r.items then for _, c in ipairs(r.items) do if not has(c) then return false end end end
+  if r.any then
+    local ok = false
+    for _, c in ipairs(r.any) do ok = ok or has(c) end
+    if not ok then return false end
+  end
   if r.seeds and not (has("maracas") and count("korok") >= r.seeds) then return false end
   if r.trial and not (powers() and count("heart") >= MS_HEARTS and has("master_sword")) then return false end
   if r.powers and not powers() then return false end
   if r.pull and count("heart") < MS_HEARTS then return false end
   if r.maracas and not has("maracas") then return false end
-  if r.helm and not has("thunder_helm") then return false end
-  if r.zora and not has("zora_armor") then return false end
   if r.freed then for _, id in ipairs(r.freed) do if not CLEARED[id] then return false end end end
   if has("setting_region_lock") then
     if r.reg < 0 then
@@ -478,12 +486,12 @@ Archipelago:AddLocationHandler("location handler", onLocation)
 def lua_table(rules, beast_ids):
     out = ["RULES = {"]
     for i, r in sorted(rules.items()):
-        parts = [f"reg={r['reg']}"] + [f"{k}=true" for k in ("glider", "runes", "trial", "powers", "pull", "maracas", "helm",
-                                                              "zora") if r.get(k)]
+        parts = [f"reg={r['reg']}"] + [f"{k}=true" for k in ("glider", "trial", "powers", "pull", "maracas") if r.get(k)]
+        for k in ("items", "any"):
+            if r.get(k):
+                parts.append(k + "={" + ",".join(f'"{c}"' for c in r[k]) + "}")
         if r.get("freed"):
             parts.append("freed={" + ",".join(str(beast_ids[b]) for b in r["freed"]) + "}")
-        if "rune" in r:
-            parts.append(f'rune="{r["rune"]}"')
         if "seeds" in r:
             parts.append(f"seeds={r['seeds']}")
         out.append(f"  [{i}]={{{','.join(parts)}}},")
@@ -686,7 +694,7 @@ def main(ex, out_dir):
     }
     json.dump(layout, open(os.path.join(pack, "layouts", "tracker.json"), "w"), indent=1)
     json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild",
-               "package_uid": "botw_ap_savagewind", "package_version": "0.4.10", "platform": "switch",
+               "package_uid": "botw_ap_savagewind", "package_version": "0.5.0", "platform": "switch",
                "variants": {"standard": {"display_name": "Map Tracker", "flags": ["ap"]}}},
               open(os.path.join(pack, "manifest.json"), "w"), indent=1)
     z = os.path.join(out_dir, "BotW_AP.zip")

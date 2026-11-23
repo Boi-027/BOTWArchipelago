@@ -81,6 +81,21 @@ BANNER_TEXT = {
     "Lynel Trap": ("Lynels are on the hunt!", []),
     "Thief Trap": ("A thief went through your pouch!", []),
     "Blood Moon Trap": ("The Blood Moon is rising...", []),
+    # (a rune: the Slate's download, as the Final Trial's Demo645_0 has it - ItemType 5 - then a message and the menu
+    # closed, as the runes' scenes; its flag after. shortcut: the download screen doesn't show out here (waiting on it
+    # soft-locks: the rune menu never gets the motorcycle's slot), so this is the banner only; find what Demo645_0
+    # sets up first to have the real animation)
+    "Master Cycle Zero": ("You got Master Cycle Zero!", [
+        ("Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsDownloadDemo"}),
+        ("Demo_OpenItemDownloadDemo", {"IsWaitFinish": False, "ItemType": 5, "IsEquip": True, "IsPowerUp": False,
+                                       "IsPlayerClose": False}),
+        ("Demo_WaitFrame", {"IsWaitFinish": True, "Frame": 70}),
+        ("Demo_OpenMessageDialog", {"IsCloseMessageDialog": True, "IsWaitFinish": True, "ASName": "",
+                                    "IsOverWriteLabelActorName": False, "CloseDialogOption": 0,
+                                    "MessageOpenDelayTime": 0, "IsWaitAS": False, "IsBecomingSpeaker": False,
+                                    "MessageId": "EventFlowMsg/Archipelago:RuneDownload"}),
+        ("Demo_CloseItemMenu", {"IsWaitFinish": True}),
+        ("Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsGet_Obj_Motorcycle"})]),
 }
 
 # The environment traps: the game's own ChangeWeatherTag (what the overworld's mountains, the desert's storm and the
@@ -252,12 +267,19 @@ def dispatch_flow():
         if actor in RUNE_DOWNLOAD:  # (the item-get scene only sets a rune's flag: the Slate's download puts it in the pouch)
             kind, plus = RUNE_DOWNLOAD[actor]  # (as Demo003_0 has it: the download, a moment, the item menu it opened closed)
             give = fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsDownloadDemo"}, fl.action(
-                esa, "Demo_OpenItemDownloadDemo", {"IsWaitFinish": True, "ItemType": kind, "IsEquip": True,
+                esa, "Demo_OpenItemDownloadDemo", {"IsWaitFinish": False, "ItemType": kind, "IsEquip": True,
                                                    "IsPowerUp": plus, "IsPlayerClose": False},
+                # (then a message, closed, as the game's own downloads have it: without one the item menu stayed open
+                # out in the world - a soft lock at Stasis +)
                 fl.action(esa, "Demo_WaitFrame", {"IsWaitFinish": True, "Frame": 70},
-                          fl.action(esa, "Demo_CloseItemMenu", {"IsWaitFinish": True},
-                                    fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsGet_" + actor},
-                                              after)))))
+                          fl.action(esa, "Demo_OpenMessageDialog", {
+                              "IsCloseMessageDialog": True, "IsWaitFinish": True, "ASName": "",
+                              "IsOverWriteLabelActorName": False, "CloseDialogOption": 0, "MessageOpenDelayTime": 0,
+                              "IsWaitAS": False, "IsBecomingSpeaker": False,
+                              "MessageId": f"EventFlowMsg/{MSG_FILE}:RuneDownload"},
+                              fl.action(esa, "Demo_CloseItemMenu", {"IsWaitFinish": True},
+                                        fl.action(esa, "Demo_FlagON", {"IsWaitFinish": True, "FlagName": "IsGet_" + actor},
+                                                  after))))))
         else:
             give = fl.subflow("GetDemo", "GetItemByName", {"CheckTargetActorName": actor, "IsInvalidOpenPouch": False},
                               after)
@@ -512,7 +534,7 @@ def main(ex, out):
     # flags only from a plain one, as Waikuteru's randomizer keeps its own)
     first = next(f.name for f in gd.get_files() if "bool_data" in f.name)
     plain = next(f.name for f in gd.get_files() if f.name.lstrip("/").startswith("bool_data"))
-    for name, flags in ((first, [PENDING, DONE, VOID, NEVER] + QFLAGS + list(ENV) + [f"AP_Want_{w}" for w in WANTS + KEEP_ON]
+    for name, flags in ((first, [PENDING, DONE, VOID, NEVER, "AP_GoalReady"] + QFLAGS + list(ENV) + [f"AP_Want_{w}" for w in WANTS + KEEP_ON]
                          + [f"AP_Set_{f}" for f in KEEP_INT + ["Given"]]),
                         (plain, list(SPAWNS))):  # (the quests' own flags: the game has them, saved)
         b = oead.byml.from_binary(bytes(gw.files[name] if name in gw.files else gd.get_file(name).data))
@@ -564,7 +586,9 @@ def main(ex, out):
         mkey = f"Message/Msg_{lang}.product.ssarc"
         msg = nin.sarc(pack[mkey])
         msg[f"EventFlowMsg/{MSG_FILE}.msbt"] = msbt_add(
-            msg["EventFlowMsg/Dummy.msbt"], {f"Banner{k}": text for k, (_, text, _) in enumerate(bn)})
+            msg["EventFlowMsg/Dummy.msbt"], {**{f"Banner{k}": text for k, (_, text, _) in enumerate(bn)},
+                                               "RuneDownload": "Downloaded to the Sheikah Slate.",
+                                               "SanctumSealed": "The sanctum is sealed. Return when your goal is complete."})
         msg_new = nin.sarc_write(msg, nin.sarc_aligns(pack[mkey]))
         pack[mkey] = nin.yaz0_store(msg_new, struct.unpack_from(">I", pack[mkey], 8)[0])
         put(rel, nin.sarc_write(pack, nin.sarc_aligns(pack_raw)))

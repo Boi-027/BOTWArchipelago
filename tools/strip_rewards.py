@@ -28,6 +28,12 @@ def edit_map(raw, hearts=False):
         elif hearts and o.get("UnitConfigName") == "Obj_HeartUtuwa_A_01":
             o["UnitConfigName"] = NAME
             n += 1
+        elif o.get("UnitConfigName") == "LinkTagNAnd" and isinstance(o.get("!Parameters"), dict) and \
+                o["!Parameters"].get("SaveFlag") == "Get_Vagrant_BOKANGI":
+            # (the Old Man's cabin chest, Chest - Temple of Time #4: the Warm Doublet's, made only while he hasn't given
+            # it - cook his recipe first and the check was gone. A check now: always made. AP_Never: give_trigger.py)
+            o["!Parameters"]["SaveFlag"] = "AP_Never"
+            n += 1
     if not n:
         return None, 0
     new = byml.write(m, struct.unpack_from("<H", d, 2)[0])

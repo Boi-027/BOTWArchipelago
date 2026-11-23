@@ -56,6 +56,7 @@ them and light up as the items they need come (the paraglider, the runes, a regi
 A check's icon goes away as soon as it is sent. Point the mouse at an icon to see the check and what it still needs
 ("Needs: Magnesis", "441 Korok Seeds (120 so far)"); click it to keep that up, click elsewhere to let it go. The icons
 are made from your own game files at **Set up** (`tools/map_icons.py`); without them the tracker shows coloured dots.
+The checks in logic show on the minimap too, around Link as you play.
 
 <img src="docs/images/map-tracker.jpg" alt="The map without Magnesis, its checks dimmed; with all four runes, bright; and a check's details: what it needs" width="100%">
 
@@ -103,7 +104,8 @@ you've slain comes back. A **Thief Trap** goes through your pouch and takes a we
 <img src="docs/images/traps-bloodmoon.jpg" alt="The Blood Moon Trap's banner, the red moon rising, its scene, and the Thief Trap" width="100%">
 
 ### Everything that was vanilla is in the pool
-The Paraglider (you leave the plateau when it arrives), the Thunder Helm, Hestu's Maracas, the
+The Paraglider (you leave the plateau when it arrives), the Thunder Helm, Hestu's Maracas, the Gerudo Set, Master
+Cycle Zero (with the DLC), the
 **Progressive Master Sword** (4 with the DLC: the sword, then each Trial of the Sword's power), Hestu's Weapon / Bow /
 Shield Slots, the minigame prizes, horse gear and more.
 
@@ -146,7 +148,7 @@ see its step.
    - **Vah Rudania** puts the Archipelago build of Savage Wind in place (your original stays as `savagewind.stock.exe`),
    - **Vah Medoh** builds the overlay from your own game files (a minute or two),
    - **Vah Naboris** turns it on in `launch-flags.txt`,
-   - the **Master Sword** installs `botw.apworld` into Archipelago and, if you chose PopTracker, a tracker pack made
+   - the **Master Sword** installs `botwsw.apworld` into Archipelago and, if you chose PopTracker, a tracker pack made
      from your game files.
 4. When all four beasts are free, the **Shrine of Resurrection** lights up. Fill in the server, slot name
    and password, pick your links and press **Play**.
@@ -180,7 +182,7 @@ map icons) is read from your own dump when it opens.
    and put `build/ap/savagewind.exe` over the one in your Savage Wind folder (keep the original). `RELEASE=1`, PGO
    and ThinLTO are how Savage Wind's own release is built: no console window, and the release's speed.
 
-2. **The apworld.** Copy [`botw.apworld`](botw.apworld) into Archipelago's `custom_worlds` folder.
+2. **The apworld.** Copy [`botwsw.apworld`](botwsw.apworld) into Archipelago's `custom_worlds` folder.
 
 3. **The overlay**, built once from your own game files:
    ```sh
@@ -213,6 +215,7 @@ The full guide is in [`worlds/botw/docs/setup_en.md`](worlds/botw/docs/setup_en.
 |---|:---:|---|
 | `required_champion_powers` | 4 | Champion abilities needed for defeating Calamity Ganon to count as your goal |
 | `goal_needs_master_sword` | off | The goal also needs the Master Sword |
+| `goal_needs_divine_beasts` | off | The goal also needs all four Divine Beasts freed; the sanctum stays sealed until it's met |
 | `master_sword_hearts` | 10 | Heart Containers logic expects before pulling the Master Sword |
 | `koroks` | on | The 900 Korok Seeds are checks |
 | `chests` | on | Overworld chests are checks |
@@ -272,15 +275,15 @@ Put `poptracker/BotW_AP.zip` in PopTracker's `packs` folder and connect with the
 | [`savagewind-archipelago.patch`](savagewind-archipelago.patch) | Savage Wind changes: the built-in client, item scenes, shops, region lock |
 | [`.github/workflows/savagewind-ap.yml`](.github/workflows/savagewind-ap.yml) | Builds the patched `savagewind.exe` for every new Savage Wind release, for the launcher's update |
 | [`launcher/`](launcher) | The launcher: setup logic, its window, and the PyInstaller build |
-| [`build.py`](build.py) | Zips `worlds/botw` into `botw.apworld` |
+| [`build.py`](build.py) | Zips `worlds/botw` into `botwsw.apworld` |
 
 ```sh
 .venv/Scripts/python -I tools/extract.py "<your Savage Wind folder>/extracted"   # location data
-python build.py                                                                  # botw.apworld
+python build.py                                                                  # botwsw.apworld
 ```
 
 To build the launcher, put your patched `savagewind.exe` (with a `savagewind.exe.sha256` holding its SHA-256) and
-`botw.apworld` in `launcher/payload`, then:
+`botwsw.apworld` in `launcher/payload`, then:
 
 ```sh
 .venv/Scripts/python -m pip install pyinstaller
@@ -291,8 +294,12 @@ To build the launcher, put your patched `savagewind.exe` (with a `savagewind.exe
 
 ## Notes
 
-- Logic is open-world, like the game: off the Great Plateau you need the Paraglider and the four runes; each plateau
+- Logic is open-world, like the game: off the Great Plateau you need the Paraglider; each check then needs what it
+  really takes, from [EIdras's logic](https://github.com/EIdras/BOTW-Archipelago) and every check's how-to on the
+  map (a rune, bombs, the Flamebreaker Set on Death Mountain, the Gerudo Set to get into Gerudo Town...). Each plateau
   shrine needs its own rune.
+- Filler is spread over about 250 materials, weapons, rupees and arrows, so no one item piles up.
+- A weapon that arrives with a full pouch waits, and lands as soon as you free a slot.
 - What waits on a Divine Beast in the game waits on it in logic too: the Champions' Ballad on all four, Dagah Keek and
   Zora's Domain's quests on Vah Ruta, Rito Village's on Vah Medoh, and so on. Zora Armor is needed for the waterfalls
   (Dagah Keek, Mah Eliya, Diving is Beauty!), and the Master Sword needs at least 10 Heart Containers, as in the game.

@@ -112,12 +112,18 @@ def fixed_effects(flow):
             out[e.name] = ("100enemy", "sword awakened")
         elif act == "Demo_FlagON" and p.get("FlagName") in RUNE_FLAGS:
             out[e.name] = ("Runes", "void " + p["FlagName"])
+        elif act == "Demo_FlagON" and p.get("FlagName") == "IsGet_Obj_Motorcycle":  # (the item Master Cycle Zero gives it)
+            out[e.name] = ("BalladOfHeroes", "void " + p["FlagName"])
         elif act == "Demo_OpenItemDownloadDemo" and flow.name == "Demo003_0":  # (a plateau shrine's terminal: the rune it shows)
             out[e.name] = ("Runes", "rune download")
         elif act == "Demo_OpenItemDownloadDemo" and p.get("IsPowerUp"):  # (Purah's upgrade, Demo032_0: its "+" shown)
             out[e.name] = ("Runes", "rune download")
         elif act == "Demo_DeletePorchItemInEquip" and str(p.get("PorchItemName", "")).startswith("Obj_HeroSoul_"):
             out[e.name] = ("BalladOfHeroes", "keep " + p["PorchItemName"])
+    if flow.name == "HyruleCastle":  # (the sanctum, first visit and later: Calamity Ganon only once the goal is met)
+        for ep in flow.flowchart.entry_points:
+            if ep.name in ("BossRoom0", "BossRoom1"):
+                out[ep.main_event.v.name] = ("Sanctum", "goal gate")
     for e in flow.flowchart.events:
         d = e.data
         if type(d).__name__ == "SwitchEvent" and str(d.actor_query.v) == "CheckFlag" and                 (d.params.data.get("FlagName") or "") in RUNE_PLUS:  # (Purah's offers: open until bought)
@@ -265,6 +271,15 @@ def main(ex, out):
                     for ep in f.flowchart.entry_points:
                         if ep.main_event.v is e:
                             ep.main_event = make_index(ap)
+                elif item == "goal gate":
+                    # (AP_GoalReady: the client's, on once the goal's requirements are met; off: the game's banner, and
+                    # no fight - the sanctum stays empty until Link comes back with them)
+                    sealed = fl.action("EventSystemActor", "Demo_OpenDungeonMessage", {
+                        "IsWaitFinish": True, "MessageId": "EventFlowMsg/Archipelago:SanctumSealed"})
+                    gate = fl.switch("EventSystemActor", "CheckFlag", {"FlagName": "AP_GoalReady"}, {1: e, 0: sealed})
+                    for ep in f.flowchart.entry_points:
+                        if ep.main_event.v is e:
+                            ep.main_event = make_index(gate)
                 elif item.startswith("slot "):
                     e.data.params.data["Value"] = 0
                 elif item.startswith("sword power"):  # (+0: the action the flow already has for it)

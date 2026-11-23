@@ -15,6 +15,10 @@ LOC_IDS = {l["name"]: LOC_BASE + l["hash"] for l in LOCATIONS}
 # region lock: the towers' regions, which border which (tools/regions.py); the Great Plateau's is open from the start
 REGIONS = json.loads(pkgutil.get_data(__name__, "data/regions.json").decode("utf8"))
 GOAL_FLAG = "GanonQuest_Finished"
+# what each check needs beyond the rules below: {name: {"all": [items], "any": [items]}} (tools/logic_data.py: the
+# game's climate - Death Mountain's burning areas, the Flamebreaker Set -, Gerudo Town's walls - the Gerudo Set -, the
+# runes each check needs, after the EIdras world's logic and Map Genie's how-tos; all four where neither says)
+LOGIC = json.loads(pkgutil.get_data(__name__, "data/logic.json").decode("utf8"))
 
 CATEGORY_OPTION = {"Korok": "koroks", "Chest": "chests", "Shrine Chest": "shrine_chests",
                    "Divine Beast Chest": "divine_beast_chests", "Tower": "towers", "Memory": "memories",
@@ -132,9 +136,6 @@ class BotWWorld(World):
                 loc.access_rule = lambda s: s.has("Heart Container", p, hearts)
             elif l["flag"] == "OldKorok_Help_Finish":  # (The Priceless Maracas)
                 loc.access_rule = lambda s: s.has("Hestu's Maracas", p)
-            elif "Naboris" in l["name"] and l["category"] in ("Divine Beast", "Divine Beast Chest", "Main Quest"):
-                # (Vah Naboris's lightning: the Thunder Helm)
-                loc.access_rule = lambda s: s.has("Thunder Helm", p)
             if needs(l):
                 rule = loc.access_rule
                 loc.access_rule = lambda s, r=rule, n=needs(l): s.has_all(n, p) and r(s)
@@ -144,10 +145,13 @@ class BotWWorld(World):
             elif l.get("plateau") and shrine in SHRINE_RUNE:
                 runes = [SHRINE_RUNE[shrine]]
             else:
-                runes = RUNES
-            if runes:
+                runes = []
+            want = LOGIC.get(l["name"], {})
+            need, alt = sorted(set(runes) | set(want.get("all", []))), want.get("any", [])
+            if need or alt:
                 rule = loc.access_rule
-                loc.access_rule = lambda s, r=rule, need=runes: s.has_all(need, p) and r(s)
+                loc.access_rule = lambda s, r=rule, n=need, a=alt: (s.has_all(n, p) and (not a or s.has_any(a, p))
+                                                                    and r(s))
             if not l.get("plateau"):  # (off the Great Plateau: the paraglider first; tools/extract.py)
                 rule = loc.access_rule
                 loc.access_rule = lambda s, r=rule: s.has("Paraglider", p) and r(s)
@@ -162,9 +166,11 @@ class BotWWorld(World):
                 area.locations.append(ev)
         goal = BotWLocation(p, "Defeat Calamity Ganon", None, goal_area)
         need, sword = o.required_champion_powers.value, bool(o.goal_needs_master_sword)
+        beasts = bool(o.goal_needs_divine_beasts)  # (the "Freed" events: the beasts' Cleared checks, as hard to reach)
         goal.access_rule = lambda s: (s.has("Paraglider", p) and s.has_all(RUNES, p)
                                       and sum(s.has(c, p) for c in CHAMPION_POWERS) >= need
-                                      and (not sword or s.has("Progressive Master Sword", p)))
+                                      and (not sword or s.has("Progressive Master Sword", p))
+                                      and (not beasts or s.has_all(ALL_FREED, p)))
         goal.place_locked_item(BotWItem("Victory", IC.progression, None, p))
         goal_area.locations.append(goal)
         self.multiworld.completion_condition[p] = lambda s: s.has("Victory", p)
@@ -182,7 +188,7 @@ class BotWWorld(World):
                 copies = 1  # (the later copies are the DLC's: the Trial of the Sword, the Champions' Ballad's "+")
             if name in MAPS and (not self.options.region_lock or name == start_map):
                 continue
-            if copies and (name != "Travel Medallion" or self.options.dlc):
+            if copies and (name not in ("Travel Medallion", "Master Cycle Zero") or self.options.dlc):
                 pool += [self.create_item(name) for _ in range(copies)]
         if self.options.hestu:
             pool += [self.create_item("Korok Seed") for _ in range(HESTU_SEEDS)]
@@ -202,6 +208,7 @@ class BotWWorld(World):
         # actions: what the game does for each of its items (Savage Wind's native client reads them from here)
         return {"required_champion_powers": self.options.required_champion_powers.value,
                 "goal_needs_master_sword": bool(self.options.goal_needs_master_sword),
+                "goal_needs_divine_beasts": bool(self.options.goal_needs_divine_beasts),
                 "goal_flag": GOAL_FLAG,
                 "actions": {str(ITEM_IDS[n]): v[1] for n, v in ITEMS.items()},
                 "champion_powers": [ITEM_IDS[n] for n in CHAMPION_POWERS],

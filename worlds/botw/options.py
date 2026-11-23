@@ -17,6 +17,11 @@ class GoalNeedsMasterSword(Toggle):
     display_name = "Goal Needs Master Sword"
 
 
+class GoalNeedsDivineBeasts(Toggle):
+    """The goal also needs all four Divine Beasts freed. The sanctum stays sealed until the goal's requirements are met."""
+    display_name = "Goal Needs Divine Beasts"
+
+
 class MasterSwordHearts(Range):
     """Heart Containers from the multiworld the Master Sword check expects in logic (13 hearts in game = 10 more)."""
     display_name = "Master Sword Hearts"
@@ -112,6 +117,7 @@ class TrapPercentage(Range):
 class BotWOptions(PerGameCommonOptions):
     required_champion_powers: RequiredChampionPowers
     goal_needs_master_sword: GoalNeedsMasterSword
+    goal_needs_divine_beasts: GoalNeedsDivineBeasts
     master_sword_hearts: MasterSwordHearts
     koroks: Koroks
     chests: Chests

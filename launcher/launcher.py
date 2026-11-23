@@ -20,7 +20,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "0.4.10"
+VERSION = "0.5.0"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
 RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 
@@ -279,8 +279,9 @@ def status(cfg):
         ("todo", "Savage Wind will be told to load the overlay.")
     ap = cfg.get("archipelago", "")
     if ap and os.path.isdir(ap):
-        dest = os.path.join(ap, "custom_worlds", "botw.apworld")
-        same = os.path.exists(dest) and sha256(dest) == sha256(os.path.join(PAYLOAD, "botw.apworld"))
+        dest = os.path.join(ap, "custom_worlds", "botwsw.apworld")
+        same = os.path.exists(dest) and sha256(dest) == sha256(os.path.join(PAYLOAD, "botwsw.apworld")) and \
+            not os.path.exists(os.path.join(ap, "custom_worlds", "botw.apworld"))
         out["apworld"] = ("ok", "Installed in Archipelago's custom_worlds.") if same else \
             ("todo", "Installed into Archipelago's custom_worlds on Set up.")
     else:
@@ -375,10 +376,14 @@ def setup(cfg, log, step=lambda key, f: None):
     step("flags", 1)
     if st["apworld"][0] == "todo":
         step("apworld", 0.3)
-        log("Installing botw.apworld into Archipelago")
+        log("Installing botwsw.apworld into Archipelago")
         dest = os.path.join(cfg["archipelago"], "custom_worlds")
         os.makedirs(dest, exist_ok=True)
-        shutil.copy2(os.path.join(PAYLOAD, "botw.apworld"), dest)
+        shutil.copy2(os.path.join(PAYLOAD, "botwsw.apworld"), dest)
+        old = os.path.join(dest, "botw.apworld")  # (its name before 0.5.0: both would load the same game)
+        if os.path.exists(old):
+            os.remove(old)
+            log("Removed the old botw.apworld")
     step("apworld", 1)
     if st["poptracker"][0] == "todo":
         step("poptracker", 0.05)

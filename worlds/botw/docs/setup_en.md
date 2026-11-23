@@ -3,7 +3,7 @@
 ## What you need
 - Savage Wind Recomp 0.5.3-alpha.5 with your own game files set up, built with `savagewind-archipelago.patch`. The
   patch puts the whole Archipelago client inside the game: no Archipelago install or extra window is needed to play.
-- To generate a seed: Archipelago 0.6.8 or later with `botw.apworld` in `custom_worlds`.
+- To generate a seed: Archipelago 0.6.8 or later with `botwsw.apworld` in `custom_worlds`.
 
 ## The Archipelago overlay (recommended)
 Changed game files, built from your own: checks give the Archipelago Item instead of their normal reward, items you

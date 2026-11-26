@@ -261,6 +261,8 @@ def dispatch_flow():
         elif actor == "Obj_StaminaUtuwa_A_01":
             after = fl.action(esa, "Demo_StartStaminaUpDemo", {"IsWaitFinish": True},
                               fl.action(esa, "Demo_WaitForStaminaUpDemoEnd", {"IsWaitFinish": True}, off))
+        elif actor == "Weapon_Sword_070":  # (into the pouch in its own slot, as the pull's Demo202_0 has it)
+            after = fl.action(esa, "Demo_SetItemDataToPouch", {"IsWaitFinish": True, "TargetActorName": actor}, off)
         elif actor.startswith("Obj_DLC_HeroSoul_"):  # (the ability it improves leaves the pouch, as in Demo622)
             after = fl.action(esa, "Demo_DeletePorchItemInEquip", {"IsWaitFinish": True, "DeleteNum": -1,
                               "PorchItemName": actor.replace("DLC_", "")}, off)

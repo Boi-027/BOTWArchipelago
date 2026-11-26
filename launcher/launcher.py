@@ -20,7 +20,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 REPO = "https://github.com/Boi-027/BOTWArchipelago"
 RELEASES_API = "https://api.github.com/repos/Boi-027/BOTWArchipelago/releases?per_page=30"
 
@@ -380,7 +380,7 @@ def setup(cfg, log, step=lambda key, f: None):
         dest = os.path.join(cfg["archipelago"], "custom_worlds")
         os.makedirs(dest, exist_ok=True)
         shutil.copy2(os.path.join(PAYLOAD, "botwsw.apworld"), dest)
-        old = os.path.join(dest, "botw.apworld")  # (its name before 0.5.1: both would load the same game)
+        old = os.path.join(dest, "botw.apworld")  # (its name before 0.5.2: both would load the same game)
         if os.path.exists(old):
             os.remove(old)
             log("Removed the old botw.apworld")

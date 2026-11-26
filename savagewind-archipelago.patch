@@ -1,9 +1,9 @@
 diff --git a/runtime/ap_event.c b/runtime/ap_event.c
 new file mode 100644
-index 0000000..abb926e
+index 0000000..aac3775
 --- /dev/null
 +++ b/runtime/ap_event.c
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,233 @@
 +// Archipelago: received items handed to Link with the game's own item-get scene, at once, wherever he is
 +// (runtime/ui/ap_client.mm "!demo"). The overlay (botw_ap tools/give_trigger.py) has the event Archipelago<AP_Dispatch>:
 +// the scene for the item whose AP_Q<n> flag is on. This starts it the way the game starts its own scripted events
@@ -193,6 +193,8 @@ index 0000000..abb926e
 +        if (ev != g_shop_ev) {  // (an event began: whose)
 +            g_shop_ev = ev;
 +            snprintf(g_shop_talk, sizeof g_shop_talk, "%s", framepace_event_name());
++            extern void ap_shop_talk(const char *actor);
++            ap_shop_talk(g_shop_talk);  // (a merchant's bought slots: the shop screen's list too)
 +        }
 +        return;
 +    }
@@ -419,10 +421,10 @@ index 0000000..f704b43
 +}
 diff --git a/runtime/ap_shop.c b/runtime/ap_shop.c
 new file mode 100644
-index 0000000..515e4e8
+index 0000000..da34f52
 --- /dev/null
 +++ b/runtime/ap_shop.c
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,130 @@
 +// Archipelago shop sanity: every shop slot sells its own Archipelago Item (Item_AP_<hex>, botw_ap tools/shop_items.py)
 +// until it's bought, then the shop's own good again. On a counter the map does that (a link tag on the slot's saved
 +// flag AP_Shop_<hex>); a merchant's list is in the shopkeeper's actor pack, so it is read here: the overlay folder's
@@ -507,6 +509,51 @@ index 0000000..515e4e8
 +            if (at >= in && at < in + n) dst[at - in] = j < gn ? (uint8_t)s->good[j] : 0;
 +        }
 +    }
++}
++
++// Talking to a merchant (`actor`, the event's): the shop screen keeps the list it built the first time it was read, so
++// a slot bought since still shows its Archipelago Item there. Before the screen opens, each bought slot of this
++// merchant's has its name written over as the good's in every copy held in a name buffer (zeros after it); the copies
++// in name tables (the next name straight after: the game's item tables) are never touched.
++#ifdef _WIN32
++#include <windows.h>
++#endif
++void ap_shop_talk(const char *actor) {
++    extern bool gdt_get(uint32_t hash, int32_t *out);
++    pthread_once(&g_once, load);
++    char pack[128];
++    snprintf(pack, sizeof pack, "/%s.sbactorpack", actor);
++    enum { MAXT = 64 };
++    ShopName *t[MAXT];
++    int nt = 0, hits = 0;
++    for (int i = 0; i < g_n && nt < MAXT; i++) {
++        int32_t v = 0;
++        if (strstr(g_names[i].pack, pack) && gdt_get(g_names[i].flag, &v) && v) t[nt++] = &g_names[i];
++    }
++    if (!nt) return;
++#ifdef _WIN32
++    MEMORY_BASIC_INFORMATION m;
++    for (uint64_t a = HEAP_BASE; a < HEAP_BASE + HEAP_MAX && VirtualQuery((void *)(uintptr_t)a, &m, sizeof m);) {
++        uint64_t end = (uint64_t)(uintptr_t)m.BaseAddress + m.RegionSize;
++        DWORD p = m.Protect & 0xff;
++        if (m.State == MEM_COMMIT && !(m.Protect & PAGE_GUARD) && (p == PAGE_READWRITE || p == PAGE_EXECUTE_READWRITE)) {
++            uint8_t *s = (uint8_t *)(uintptr_t)a, *e = (uint8_t *)(uintptr_t)end;
++            for (uint8_t *q = s; (size_t)(e - q) > 24 && (q = memchr(q, 'I', (size_t)(e - q - 24))); q++) {
++                if (memcmp(q, "Item_AP_", 8)) continue;
++                for (int k = 0; k < nt; k++) {
++                    size_t an = strlen(t[k]->ap) + 1, gn = strlen(t[k]->good);
++                    if ((size_t)(e - q) <= an || memcmp(q, t[k]->ap, an) || q[an]) continue;
++                    for (size_t j = 0; j + 1 < an; j++) q[j] = j < gn ? (uint8_t)t[k]->good[j] : 0;
++                    hits++;
++                    break;
++                }
++            }
++        }
++        if (end <= a) break;
++        a = end;
++    }
++#endif  // shortcut: Windows only (VirtualQuery); elsewhere a bought slot shows its Archipelago Item until a restart
++    LOG("[ap] shop: talking to %s: %d bought slot(s), %d name(s) rewritten\n", actor, nt, hits);
 +}
 diff --git a/runtime/assists.c b/runtime/assists.c
 index 4462ab5..e806a83 100644

@@ -1,6 +1,6 @@
 from BaseClasses import Item, ItemClassification as IC
 
-GAME = "Breath of the Wild"
+GAME = "Breath of the Wild Savage Winds"
 ITEM_BASE = 7_377_000_000
 
 

@@ -693,7 +693,7 @@ def main(ex, out_dir):
             group("Items", main_rows, 50), regions]},
     }
     json.dump(layout, open(os.path.join(pack, "layouts", "tracker.json"), "w"), indent=1)
-    json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild",
+    json.dump({"name": "Breath of the Wild Archipelago (Savage Wind)", "game_name": "Breath of the Wild Savage Wind",
                "package_uid": "botw_ap_savagewind", "package_version": "0.5.2", "platform": "switch",
                "variants": {"standard": {"display_name": "Map Tracker", "flags": ["ap"]}}},
               open(os.path.join(pack, "manifest.json"), "w"), indent=1)

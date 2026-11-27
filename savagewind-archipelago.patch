@@ -1458,7 +1458,7 @@ index 0000000..008bb1b
 +using json = nlohmann::json;
 +namespace {
 +
-+const char *const GAME = "Breath of the Wild";
++const char *const GAME = "Breath of the Wild Savage Wind";
 +const int64_t LOC_BASE = 7400000000LL;
 +uint32_t crc(const std::string &s) { return (uint32_t)crc32(0, (const Bytef *)s.data(), (uInt)s.size()); }
 +
